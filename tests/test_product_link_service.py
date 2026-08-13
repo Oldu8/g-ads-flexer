@@ -1,0 +1,170 @@
+"""Tests for Google Ads Product Link Service"""
+
+import pytest
+from typing import Any
+from unittest.mock import Mock
+
+from google.ads.googleads.v25.resources.types.product_link import (
+    ProductLink,
+)
+from google.ads.googleads.v25.services.types.product_link_service import (
+    CreateProductLinkResponse,
+    RemoveProductLinkResponse,
+)
+
+from src.services.product_integration.product_link_service import ProductLinkService
+
+
+class TestProductLinkService:
+    """Test cases for ProductLinkService"""
+
+    @pytest.fixture
+    def mock_service_client(self) -> Any:
+        """Mock ProductLinkService API client (from get_service)."""
+        return Mock()
+
+    @pytest.fixture
+    def product_link_service(self, mock_service_client: Any) -> Any:
+        """Create ProductLinkService instance with mock client"""
+        service = ProductLinkService()
+        service._client = mock_service_client  # type: ignore[reportPrivateUsage]
+        return service
+
+    def test_create_product_link(
+        self, product_link_service: Any, mock_service_client: Any
+    ):
+        """Test creating a product link"""
+        # Setup
+        customer_id = "1234567890"
+        product_link = ProductLink()
+
+        mock_response = CreateProductLinkResponse(
+            resource_name="customers/1234567890/productLinks/123"
+        )
+        mock_service_client.create_product_link.return_value = mock_response  # type: ignore
+
+        # Execute
+        response = product_link_service.create_product_link(
+            customer_id=customer_id, product_link=product_link
+        )
+
+        # Verify
+        assert response == mock_response
+
+        # Verify request
+        call_args = mock_service_client.create_product_link.call_args  # type: ignore
+        request = call_args.kwargs["request"]
+        assert request.customer_id == customer_id
+        assert request.product_link == product_link
+
+    def test_remove_product_link(
+        self, product_link_service: Any, mock_service_client: Any
+    ):
+        """Test removing a product link"""
+        # Setup
+        customer_id = "1234567890"
+        resource_name = "customers/1234567890/productLinks/123"
+
+        mock_response = RemoveProductLinkResponse(resource_name=resource_name)
+        mock_service_client.remove_product_link.return_value = mock_response  # type: ignore
+
+        # Execute
+        response = product_link_service.remove_product_link(
+            customer_id=customer_id, resource_name=resource_name
+        )
+
+        # Verify
+        assert response == mock_response
+
+        # Verify request
+        call_args = mock_service_client.remove_product_link.call_args  # type: ignore
+        request = call_args.kwargs["request"]
+        assert request.customer_id == customer_id
+        assert request.resource_name == resource_name
+
+    def test_create_merchant_center_link(
+        self, product_link_service: Any, mock_service_client: Any
+    ):
+        """Test creating a Merchant Center link"""
+        # Setup
+        customer_id = "1234567890"
+        merchant_center_id = 123456789
+
+        mock_response = CreateProductLinkResponse(
+            resource_name="customers/1234567890/productLinks/123"
+        )
+        mock_service_client.create_product_link.return_value = mock_response  # type: ignore
+
+        # Execute
+        response = product_link_service.create_merchant_center_link(
+            customer_id=customer_id, merchant_center_id=merchant_center_id
+        )
+
+        # Verify
+        assert response == mock_response
+
+        # Verify request
+        call_args = mock_service_client.create_product_link.call_args  # type: ignore
+        request = call_args.kwargs["request"]
+        assert request.customer_id == customer_id
+        assert (
+            request.product_link.merchant_center.merchant_center_id
+            == merchant_center_id
+        )
+
+    def test_create_google_ads_link(
+        self, product_link_service: Any, mock_service_client: Any
+    ):
+        """Test creating a Google Ads link"""
+        # Setup
+        customer_id = "1234567890"
+        linked_customer_id = 9876543210
+
+        mock_response = CreateProductLinkResponse(
+            resource_name="customers/1234567890/productLinks/123"
+        )
+        mock_service_client.create_product_link.return_value = mock_response  # type: ignore
+
+        # Execute
+        response = product_link_service.create_google_ads_link(
+            customer_id=customer_id, linked_customer_id=linked_customer_id
+        )
+
+        # Verify
+        assert response == mock_response
+
+        # Verify request
+        call_args = mock_service_client.create_product_link.call_args  # type: ignore
+        request = call_args.kwargs["request"]
+        assert request.customer_id == customer_id
+        assert (
+            request.product_link.google_ads.customer
+            == f"customers/{linked_customer_id}"
+        )
+
+    def test_create_data_partner_link(
+        self, product_link_service: Any, mock_service_client: Any
+    ):
+        """Test creating a data partner link"""
+        # Setup
+        customer_id = "1234567890"
+        data_partner_id = 555666777
+
+        mock_response = CreateProductLinkResponse(
+            resource_name="customers/1234567890/productLinks/123"
+        )
+        mock_service_client.create_product_link.return_value = mock_response  # type: ignore
+
+        # Execute
+        response = product_link_service.create_data_partner_link(
+            customer_id=customer_id, data_partner_id=data_partner_id
+        )
+
+        # Verify
+        assert response == mock_response
+
+        # Verify request
+        call_args = mock_service_client.create_product_link.call_args  # type: ignore
+        request = call_args.kwargs["request"]
+        assert request.customer_id == customer_id
+        assert request.product_link.data_partner.data_partner_id == data_partner_id
