@@ -71,8 +71,8 @@ class SearchService:
                     campaign.advertising_channel_type,
                     campaign.campaign_budget,
                     campaign_budget.amount_micros,
-                    campaign.start_date,
-                    campaign.end_date
+                    campaign.start_date_time,
+                    campaign.end_date_time
                 FROM campaign
             """
 
@@ -274,7 +274,6 @@ class SearchService:
         ctx: Context,
         customer_id: str,
         query: str,
-        page_size: int = 1000,
     ) -> List[Dict[str, Any]]:
         """Execute a custom GAQL query.
 
@@ -282,7 +281,6 @@ class SearchService:
             ctx: FastMCP context
             customer_id: The customer ID
             query: The GAQL (Google Ads Query Language) query
-            page_size: Number of results per page
 
         Returns:
             List of query results as dictionaries
@@ -290,11 +288,15 @@ class SearchService:
         try:
             customer_id = format_customer_id(customer_id)
 
-            # Create request
+            # Create request. v25's GoogleAdsService.Search no longer allows
+            # the client to set page_size at all - the server rejects the
+            # request with "Setting the page size is not supported" and
+            # always paginates at a fixed 10000 rows, so it must be left
+            # unset (the GoogleAdsServiceClient iterator still auto-paginates
+            # across multiple pages transparently).
             request = SearchGoogleAdsRequest()
             request.customer_id = customer_id
             request.query = query
-            request.page_size = page_size
 
             # Execute search
             response = self.client.search(request=request)
@@ -452,14 +454,12 @@ def create_search_tools(service: SearchService) -> List[Callable[..., Awaitable[
         ctx: Context,
         customer_id: str,
         query: str,
-        page_size: int = 1000,
     ) -> List[Dict[str, Any]]:
         """Execute a custom GAQL (Google Ads Query Language) query.
 
         Args:
             customer_id: The customer ID
             query: The GAQL query to execute
-            page_size: Number of results per page
 
         Returns:
             List of query results as dictionaries
@@ -472,7 +472,6 @@ def create_search_tools(service: SearchService) -> List[Callable[..., Awaitable[
             ctx=ctx,
             customer_id=customer_id,
             query=query,
-            page_size=page_size,
         )
 
     tools.extend([search_campaigns, search_ad_groups, search_keywords, execute_query])

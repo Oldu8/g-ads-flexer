@@ -27,7 +27,12 @@ from google.ads.googleads.v25.enums.types.user_identifier_source import (
 from google.ads.googleads.errors import GoogleAdsException
 
 from src.sdk_client import get_sdk_client
-from src.utils import format_ads_error, format_customer_id, get_logger
+from src.utils import (
+    format_ads_error,
+    format_customer_id,
+    format_partial_failure_error,
+    get_logger,
+)
 
 logger = get_logger(__name__)
 
@@ -156,9 +161,9 @@ class UserDataService:
             result = {
                 "received_operations_count": response.received_operations_count,
                 "upload_date_time": response.upload_date_time,
-                "partial_failure_error": str(response.partial_failure_error)
-                if response.partial_failure_error
-                else None,
+                "partial_failure_error": format_partial_failure_error(
+                    response.partial_failure_error
+                ),
             }
 
             await ctx.log(
@@ -295,9 +300,9 @@ class UserDataService:
             result = {
                 "received_operations_count": response.received_operations_count,
                 "upload_date_time": response.upload_date_time,
-                "partial_failure_error": str(response.partial_failure_error)
-                if response.partial_failure_error
-                else None,
+                "partial_failure_error": format_partial_failure_error(
+                    response.partial_failure_error
+                ),
             }
 
             await ctx.log(
@@ -408,9 +413,9 @@ class UserDataService:
             result = {
                 "received_operations_count": response.received_operations_count,
                 "upload_date_time": response.upload_date_time,
-                "partial_failure_error": str(response.partial_failure_error)
-                if response.partial_failure_error
-                else None,
+                "partial_failure_error": format_partial_failure_error(
+                    response.partial_failure_error
+                ),
             }
 
             await ctx.log(

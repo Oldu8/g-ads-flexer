@@ -89,6 +89,7 @@ async def test_upload_click_conversions_basic(
 
     # Create mock response
     mock_response = Mock(spec=UploadClickConversionsResponse)
+    mock_response.partial_failure_error = None
     mock_response.results = []
     for i, _ in enumerate(conversions):
         result = Mock()
@@ -202,6 +203,7 @@ async def test_upload_click_conversions_with_user_identifiers(
 
     # Create mock response
     mock_response = Mock(spec=UploadClickConversionsResponse)
+    mock_response.partial_failure_error = None
     mock_response.results = []
     result = Mock()
     result.gclid = "gclid123"
@@ -284,6 +286,7 @@ async def test_upload_click_conversions_partial_address(
 
     # Create mock response
     mock_response = Mock(spec=UploadClickConversionsResponse)
+    mock_response.partial_failure_error = None
     mock_response.results = []
     result = Mock()
     result.gclid = "gclid123"
@@ -359,6 +362,7 @@ async def test_upload_call_conversions(
 
     # Create mock response
     mock_response = Mock(spec=UploadCallConversionsResponse)
+    mock_response.partial_failure_error = None
     mock_response.results = []
     for i, _ in enumerate(conversions):
         result = Mock()
@@ -460,6 +464,7 @@ async def test_upload_click_conversions_no_partial_failure(
 
     # Create mock response
     mock_response = Mock(spec=UploadClickConversionsResponse)
+    mock_response.partial_failure_error = None
     mock_response.results = []
     result = Mock()
     result.gclid = "gclid123"

@@ -34,6 +34,7 @@ from src.sdk_client import get_sdk_client
 from src.utils import (
     format_ads_error,
     format_customer_id,
+    format_partial_failure_error,
     get_logger,
     serialize_proto_message,
 )
@@ -218,9 +219,9 @@ class OfflineUserDataJobService:
             result = {
                 "job_resource_name": job_resource_name,
                 "operations_added": len(operations),
-                "partial_failure_error": str(response.partial_failure_error)
-                if response.partial_failure_error
-                else None,
+                "partial_failure_error": format_partial_failure_error(
+                    response.partial_failure_error
+                ),
             }
 
             await ctx.log(

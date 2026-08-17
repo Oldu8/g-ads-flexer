@@ -22,7 +22,7 @@ from google.ads.googleads.v25.enums.types.response_content_type import (
 from google.ads.googleads.v25.common.types.criteria import AudienceInfo, SearchThemeInfo
 from google.ads.googleads.v25.common.types.policy import PolicyViolationKey
 
-from src.utils import resolve_enum
+from src.utils import format_partial_failure_error, resolve_enum
 from src.sdk_client import get_sdk_client
 
 # Exception handling
@@ -291,9 +291,9 @@ def register_asset_group_signal_tools(mcp: FastMCP[Any]) -> None:
 
         return {
             "results": results,
-            "partial_failure_error": str(response.partial_failure_error)
-            if response.partial_failure_error
-            else None,
+            "partial_failure_error": format_partial_failure_error(
+                response.partial_failure_error
+            ),
         }
 
     @mcp.tool

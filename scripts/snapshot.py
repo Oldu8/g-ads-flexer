@@ -14,11 +14,12 @@ For each active campaign:
   - Search/Display-style campaigns: ad groups -> keywords + ads nested under
     each ad group.
   - Performance Max campaigns (no ad groups/keywords by design): asset
-    groups instead.
+    groups, each with its audience signals (audience/search theme targeting
+    inputs) and assets (headlines, descriptions, images, video) nested under it.
   - Extensions (campaign-level assets: sitelinks, callouts, structured
     snippets, calls, ...) shown per campaign regardless of type.
-Not covered yet: ad-group-level assets, audience signals, price/promotion
-extension details beyond a label. See TRACKER.md.
+Not covered yet: ad-group-level assets (non-PMax), price/promotion extension
+details beyond a label, raw image/video bytes. See TRACKER.md.
 """
 
 import re
@@ -61,6 +62,8 @@ def asset_label(asset) -> str:
         return f"Promotion: {asset.name or asset.resource_name}"
     if t == "PRICE":
         return f"Price: {asset.name or asset.resource_name}"
+    if t == "TEXT":
+        return f'Text: "{asset.text_asset.text or asset.name}"'
     return f"{t}: {asset.name or asset.resource_name}"
 
 
@@ -187,6 +190,41 @@ def main() -> None:
     for row in asset_group_rows:
         asset_groups_by_campaign[row.asset_group.campaign].append(row)
 
+    # --- Audience lookup (resource_name -> display name), for signal labels ---
+    audience_name_by_resource = {
+        row.audience.resource_name: row.audience.name
+        for row in search("SELECT audience.resource_name, audience.name FROM audience")
+    }
+
+    # --- Performance Max audience signals (targeting inputs per asset group) ---
+    signal_rows = search(
+        """
+        SELECT asset_group_signal.asset_group,
+               asset_group_signal.audience.audience,
+               asset_group_signal.search_theme.text,
+               campaign.status
+        FROM asset_group_signal
+        WHERE campaign.status = 'ENABLED'
+        """
+    )
+    signals_by_asset_group: dict[str, list] = defaultdict(list)
+    for row in signal_rows:
+        signals_by_asset_group[row.asset_group_signal.asset_group].append(row)
+
+    # --- Performance Max asset group assets (headlines, descriptions, images, video) ---
+    aga_rows = search(
+        """
+        SELECT asset_group_asset.asset_group, asset_group_asset.field_type,
+               asset.type, asset.name, asset.resource_name, asset.text_asset.text
+        FROM asset_group_asset
+        WHERE asset_group_asset.status = 'ENABLED'
+          AND campaign.status = 'ENABLED'
+        """
+    )
+    assets_by_asset_group: dict[str, list] = defaultdict(list)
+    for row in aga_rows:
+        assets_by_asset_group[row.asset_group_asset.asset_group].append(row)
+
     # --- Extensions (campaign-level assets) ---
     extension_rows = search(
         """
@@ -283,22 +321,46 @@ def main() -> None:
                     f"{asset_label(ext_row.asset)}"
                 )
 
-        # Performance Max -> asset groups
+        # Performance Max -> asset groups, each with its own signals + assets
         asset_groups = asset_groups_by_campaign.get(c.resource_name, [])
-        if asset_groups:
-            lines.append("")
-            lines.append(f"**Asset groups ({len(asset_groups)}):**")
+        for ag_row in asset_groups:
+            ag, agm = ag_row.asset_group, ag_row.metrics
             lines.append("")
             lines.append(
-                "| Asset group | Status | Ad strength | Cost | Clicks | Conversions |"
+                f"**Asset group: {ag.name}** (`{ag.id}`, ad strength: {ag.ad_strength.name})"
             )
-            lines.append("|---|---|---|---|---|---|")
-            for ag_row in asset_groups:
-                ag, agm = ag_row.asset_group, ag_row.metrics
-                lines.append(
-                    f"| {ag.name} (`{ag.id}`) | {ag.status.name} | {ag.ad_strength.name} | "
-                    f"{micros(agm.cost_micros):.2f} | {agm.clicks} | {agm.conversions:.1f} |"
-                )
+            lines.append(
+                f"— {micros(agm.cost_micros):.2f} {account.currency_code}, "
+                f"{agm.clicks} clicks, {agm.conversions:.1f} conversions"
+            )
+
+            signals = signals_by_asset_group.get(ag.resource_name, [])
+            if signals:
+                lines.append("")
+                lines.append(f"_Audience signals ({len(signals)}):_")
+                for sig_row in signals:
+                    sig = sig_row.asset_group_signal
+                    if sig.audience.audience:
+                        name = audience_name_by_resource.get(
+                            sig.audience.audience, sig.audience.audience
+                        )
+                        lines.append(f"- Audience: {name}")
+                    elif sig.search_theme.text:
+                        lines.append(f'- Search theme: "{sig.search_theme.text}"')
+
+            assets = assets_by_asset_group.get(ag.resource_name, [])
+            if assets:
+                by_field_type: dict[str, list] = defaultdict(list)
+                for a_row in assets:
+                    by_field_type[a_row.asset_group_asset.field_type.name].append(
+                        asset_label(a_row.asset)
+                    )
+                lines.append("")
+                lines.append(f"_Assets ({len(assets)}):_")
+                for field_type, labels in by_field_type.items():
+                    lines.append(
+                        f"- **{field_type}** ({len(labels)}): " + "; ".join(labels)
+                    )
 
         # Search/Display -> ad groups with nested keywords + ads
         ad_groups = ad_groups_by_campaign.get(c.resource_name, [])
@@ -349,7 +411,8 @@ def main() -> None:
     print(
         f"Wrote {out_path} ({len(campaign_rows)} active campaigns, "
         f"{len(ad_group_rows)} ad groups, {len(asset_group_rows)} asset groups, "
-        f"{len(keyword_rows)} keywords, {len(ad_rows)} ads, {len(extension_rows)} extensions)"
+        f"{len(keyword_rows)} keywords, {len(ad_rows)} ads, {len(extension_rows)} extensions, "
+        f"{len(signal_rows)} audience signals, {len(aga_rows)} asset group assets)"
     )
 
 

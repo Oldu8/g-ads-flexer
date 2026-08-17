@@ -20,7 +20,7 @@ from google.ads.googleads.v25.enums.types.response_content_type import (
     ResponseContentTypeEnum,
 )
 
-from src.utils import resolve_enum
+from src.utils import format_partial_failure_error, resolve_enum
 from src.sdk_client import get_sdk_client
 
 
@@ -310,9 +310,9 @@ def register_campaign_asset_set_tools(mcp: FastMCP[Any]) -> None:
 
         return {
             "results": results,
-            "partial_failure_error": str(response.partial_failure_error)
-            if response.partial_failure_error
-            else None,
+            "partial_failure_error": format_partial_failure_error(
+                response.partial_failure_error
+            ),
         }
 
     @mcp.tool

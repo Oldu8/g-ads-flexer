@@ -29,6 +29,7 @@ from src.sdk_client import get_sdk_client
 from src.utils import (
     format_ads_error,
     format_customer_id,
+    format_partial_failure_error,
     get_logger,
     serialize_proto_message,
 )
@@ -239,19 +240,11 @@ class GoogleAdsService:
             for result in response.mutate_operation_responses:
                 results.append(serialize_proto_message(result))
 
-            # Handle partial_failure_error - only include if it has actual content
-            partial_failure_error = None
-            if (
-                response.partial_failure_error
-                and response.partial_failure_error.message
-            ):
-                partial_failure_error = serialize_proto_message(
-                    response.partial_failure_error
-                )
-
             return {
                 "results": results,
-                "partial_failure_error": partial_failure_error,
+                "partial_failure_error": format_partial_failure_error(
+                    response.partial_failure_error
+                ),
             }
 
         except GoogleAdsException as e:

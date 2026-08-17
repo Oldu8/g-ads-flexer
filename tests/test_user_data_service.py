@@ -5,12 +5,20 @@ from unittest.mock import Mock, patch
 
 import pytest
 from fastmcp import Context
+from google.ads.googleads.v25.errors.types.errors import (
+    ErrorLocation,
+    GoogleAdsError,
+    GoogleAdsFailure,
+)
+from google.ads.googleads.v25.errors.types.request_error import RequestErrorEnum
 from google.ads.googleads.v25.services.services.user_data_service import (
     UserDataServiceClient,
 )
 from google.ads.googleads.v25.services.types.user_data_service import (
     UploadUserDataResponse,
 )
+from google.protobuf import any_pb2
+from google.rpc import status_pb2
 
 from src.services.data_import.user_data_service import (
     UserDataService,
@@ -351,14 +359,28 @@ async def test_partial_failure_error(
         }
     ]
 
+    # Build a real partial_failure_error the way the live API returns one: a
+    # google.rpc.Status whose details are an Any-packed GoogleAdsFailure.
+    failure = GoogleAdsFailure()
+    error = GoogleAdsError()
+    error.message = "Invalid email format"
+    error.error_code.request_error = RequestErrorEnum.RequestError.INVALID_CUSTOMER_ID
+    error.location.field_path_elements.append(
+        ErrorLocation.FieldPathElement(field_name="operations", index=0)
+    )
+    failure.errors.append(error)
+
+    detail = any_pb2.Any()
+    detail.Pack(failure._pb)  # type: ignore[attr-defined]
+    status = status_pb2.Status()
+    status.code = 3  # INVALID_ARGUMENT
+    status.details.append(detail)
+
     # Create mock response with partial failure
     mock_response = Mock(spec=UploadUserDataResponse)
     mock_response.received_operations_count = 1
     mock_response.upload_date_time = "2024-01-20 15:00:00"
-    mock_response.partial_failure_error = Mock()
-    mock_response.partial_failure_error.__str__ = Mock(  # type: ignore
-        return_value="Partial failure: Invalid email format"
-    )
+    mock_response.partial_failure_error = status
 
     # Get the mocked user data service client
     mock_user_data_client = user_data_service.client  # type: ignore
@@ -373,7 +395,13 @@ async def test_partial_failure_error(
 
     # Assert
     assert result["received_operations_count"] == 1
-    assert result["partial_failure_error"] == "Partial failure: Invalid email format"
+    assert result["partial_failure_error"] == [
+        {
+            "operation_index": 0,
+            "error_code": "request_error: INVALID_CUSTOMER_ID",
+            "message": "Invalid email format",
+        }
+    ]
 
 
 @pytest.mark.asyncio

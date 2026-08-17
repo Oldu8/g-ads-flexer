@@ -28,7 +28,7 @@ from google.ads.googleads.v25.enums.types.customizer_attribute_type import (
 from google.ads.googleads.v25.common.types.customizer_value import CustomizerValue
 
 from src.sdk_client import get_sdk_client
-from src.utils import resolve_enum, format_customer_id
+from src.utils import format_customer_id, format_partial_failure_error, resolve_enum
 
 
 class CustomerCustomizerService:
@@ -390,9 +390,9 @@ def register_customer_customizer_tools(mcp: FastMCP[Any]) -> None:
 
         return {
             "results": results,
-            "partial_failure_error": str(response.partial_failure_error)
-            if response.partial_failure_error
-            else None,
+            "partial_failure_error": format_partial_failure_error(
+                response.partial_failure_error
+            ),
         }
 
     @mcp.tool

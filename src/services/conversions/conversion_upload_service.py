@@ -24,6 +24,7 @@ from src.sdk_client import get_sdk_client
 from src.utils import (
     format_ads_error,
     format_customer_id,
+    format_partial_failure_error,
     get_logger,
     serialize_proto_message,
 )
@@ -161,7 +162,11 @@ class ConversionUploadService:
                 message=f"Uploaded {len(conversions)} click conversions",
             )
 
-            return serialize_proto_message(response)
+            result = serialize_proto_message(response)
+            result["partial_failure_error"] = format_partial_failure_error(
+                response.partial_failure_error
+            )
+            return result
 
         except GoogleAdsException as e:
             error_msg = format_ads_error(e)
@@ -232,7 +237,11 @@ class ConversionUploadService:
                 message=f"Uploaded {len(conversions)} call conversions",
             )
 
-            return serialize_proto_message(response)
+            result = serialize_proto_message(response)
+            result["partial_failure_error"] = format_partial_failure_error(
+                response.partial_failure_error
+            )
+            return result
 
         except GoogleAdsException as e:
             error_msg = format_ads_error(e)

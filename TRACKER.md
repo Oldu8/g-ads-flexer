@@ -1,5 +1,79 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-08-17 — `partial_failure_error` now decoded instead of `str()`-dumped
+
+Prompted by comparing our approach against the OSS `promobase/ad-platform-sdks`
+(Mosaic) TS SDK, which also targets Google Ads v25 — worth skimming
+`packages/google-ads-sdk` there for API-shape ideas, but not a codebase to
+port from (different language/stack: TS + REST-codegen vs our Python SDK
+wrapper). Its `GoogleAdsError` decoding of nested failure details is the one
+idea that exposed a real gap here.
+
+**What was wrong:** when a mutate call uses `partial_failure=True`, Google
+Ads doesn't raise `GoogleAdsException` — it returns per-operation errors
+inline on `response.partial_failure_error`, a raw `google.rpc.Status` whose
+`details` are `Any`-packed `GoogleAdsFailure` messages. 9 files were just
+doing `str(response.partial_failure_error)`, which dumps an unreadable raw
+protobuf blob instead of the human-readable messages `format_ads_error`
+already extracts for full-request failures.
+
+**Fix:** added `format_partial_failure_error()` to `src/utils.py` — unpacks
+each `Any` detail via `GoogleAdsFailure.deserialize()` and returns a list of
+`{operation_index, error_code, message}` dicts (or `None` if no failure),
+mirroring `format_ads_error`'s job for the partial-failure path. Swapped the
+`str(...)` call for it in all 9 files: `ad_group_customizer_service.py`,
+`user_data_service.py`, `offline_user_data_job_service.py`,
+`customer_asset_service.py`, `asset_group_signal_service.py`,
+`campaign_asset_set_service.py`, `customer_customizer_service.py`,
+`google_ads_service.py` (had its own hand-rolled `serialize_proto_message`
+version), and `conversion_upload_service.py` (previously returned
+`serialize_proto_message(response)` wholesale, relying on `MessageToDict`'s
+undocumented/fragile ability to auto-resolve the `Any` — now explicit).
+Rewrote `tests/test_user_data_service.py::test_partial_failure_error` to
+build a real `Status`+`Any`-packed `GoogleAdsFailure` instead of asserting on
+a stringified `Mock`; added `mock_response.partial_failure_error = None` to
+5 mocks in `tests/test_conversion_upload_service.py` that didn't previously
+need to touch that attribute. `ruff format`/`pyright`/`pytest` all clean
+(588 passed / 4 skipped) after the change.
+
+**Not yet done — worth a follow-up pass:** the same raw
+`str(partial_failure_error)`/no-op pattern may exist in mutate-heavy files
+not caught by the `partial_failure_error` string grep (e.g. any service
+using a differently-named local variable). Worth a second grep pass for
+`partial_failure=True` call sites generally, cross-checked against how each
+one surfaces its result, rather than trusting the literal string match used
+this round.
+
+## ⚠️ 2026-08-13 — Live-verified bug in `search_service.py`, same pattern still latent elsewhere
+
+While building a read-only remote MCP deployment (`remote_main.py`, deployed
+on Railway, see the `gads-mcp-remote-readonly-deploy` memory) and running it
+against the real boo.ua account, two v20→v25 gaps in
+`src/services/metadata/search_service.py` surfaced — exactly the kind of
+runtime-only breakage the 2026-08-11 migration note below warned was
+unverified (unit tests mock the client, so pyright/pytest didn't catch
+these):
+
+1. `execute_query` unconditionally set `request.page_size`. v25's
+   `GoogleAdsService.Search` now rejects any client-set page_size at all
+   ("Setting the page size is not supported... fixed page size of 10000
+   rows") — every call failed. **Fixed**: dropped the `page_size`
+   param/assignment entirely.
+2. `search_campaigns`'s GAQL selected `campaign.start_date`/`campaign.end_date`;
+   v25 renamed these to `campaign.start_date_time`/`campaign.end_date_time`
+   (the same rename `campaign_service.py` already handled during the v25
+   migration, but missed here). **Fixed**.
+
+**Not yet fixed** — same `request.page_size = ...` pattern, unverified
+against the live API, next agent should check both:
+- `src/services/planning/keyword_plan_idea_service.py`
+- `src/services/data_import/batch_job_service.py`
+
+Takeaway: don't trust "tests pass" as proof a service works against v25 —
+these two bugs shipped through a full `pytest`/`pyright` pass. Worth a
+systematic live-account smoke test per service before trusting existing
+✅ marks below.
+
 ## ⚠️ 2026-08-11 — Migrated from v20 to v25 (v20 is sunset)
 
 Google Ads API v20 was sunset on 2026-06-10 (v21 followed on 2026-08-05); live
