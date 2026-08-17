@@ -2,10 +2,11 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, TypeVar
+from typing import Any, Dict, List, Optional, TypeVar
 
 import grpc
 from google.ads.googleads.errors import GoogleAdsException
+from google.ads.googleads.v25.errors.types.errors import GoogleAdsFailure
 from google.protobuf.json_format import MessageToDict
 
 E = TypeVar("E")
@@ -147,6 +148,49 @@ def format_ads_error(ex: GoogleAdsException) -> str:
     request_id = getattr(ex, "request_id", None)
     suffix = f" (request_id={request_id})" if request_id else ""
     return f"Google Ads API error: {summary}{suffix}"
+
+
+def format_partial_failure_error(
+    partial_failure_error: Any,
+) -> Optional[List[Dict[str, Any]]]:
+    """Decode a mutate response's ``partial_failure_error`` into per-operation errors.
+
+    When a mutate request is sent with ``partial_failure=True``, failures are not
+    raised as a ``GoogleAdsException`` — they're returned inline on the response as
+    ``partial_failure_error``, a raw ``google.rpc.Status`` whose ``details`` are
+    ``Any``-packed ``GoogleAdsFailure`` messages. ``str()``-ing that object dumps an
+    illegible protobuf blob; this unpacks each detail the same way ``format_ads_error``
+    does for full-request failures, and includes the failing operation's index so the
+    caller can tell which of several operations in the batch failed.
+
+    Args:
+        partial_failure_error: ``response.partial_failure_error`` from a mutate
+            response made with ``partial_failure=True``.
+
+    Returns:
+        ``None`` if there was no partial failure, otherwise a list of dicts with
+        ``operation_index``, ``error_code``, and ``message`` for every failed
+        operation.
+    """
+    if not partial_failure_error or not getattr(partial_failure_error, "details", None):
+        return None
+
+    errors: List[Dict[str, Any]] = []
+    for detail in partial_failure_error.details:
+        failure = GoogleAdsFailure.deserialize(detail.value)
+        for error in failure.errors:
+            operation_index = None
+            field_path_elements = error.location.field_path_elements
+            if field_path_elements and "index" in field_path_elements[0]:
+                operation_index = field_path_elements[0].index
+            errors.append(
+                {
+                    "operation_index": operation_index,
+                    "error_code": str(error.error_code).strip(),
+                    "message": error.message or "Unknown error",
+                }
+            )
+    return errors or None
 
 
 def serialize_proto_message(

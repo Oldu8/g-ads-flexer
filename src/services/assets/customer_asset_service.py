@@ -27,7 +27,7 @@ from google.ads.googleads.v25.enums.types.asset_link_status import (
 )
 from google.protobuf import field_mask_pb2
 
-from src.utils import resolve_enum
+from src.utils import format_partial_failure_error, resolve_enum
 from src.sdk_client import get_sdk_client
 
 
@@ -350,9 +350,9 @@ def register_customer_asset_tools(mcp: FastMCP[Any]) -> None:
 
         return {
             "results": results,
-            "partial_failure_error": str(response.partial_failure_error)
-            if response.partial_failure_error
-            else None,
+            "partial_failure_error": format_partial_failure_error(
+                response.partial_failure_error
+            ),
         }
 
     @mcp.tool
