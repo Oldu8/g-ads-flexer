@@ -4,3 +4,18 @@ This page has tons of links to different resources/enums, services, errors of go
 The google ads python sdk is generated from this protocol buffer schemas.
 
 [Overview with all resources, services, enums, etc.] https://developers.google.com/google-ads/api/reference/rpc/v20/overview
+
+# Possible reference: promobase/ad-platform-sdks (Mosaic)
+https://github.com/promobase/ad-platform-sdks
+
+Open-source monorepo of TypeScript ad-platform SDKs (Meta, TikTok, Google Ads,
+LinkedIn, X, Snapchat, Reddit, Amazon Ads, etc.), not a Python/MCP project like
+ours — different language and a REST/codegen foundation (vs. our python
+google-ads SDK wrapper), so not something to port from directly. Its
+`packages/google-ads-sdk` targets Google Ads API v25 too (matches our target
+version) and is generated from protobuf, same as us. Worth skimming for
+API-shape/ergonomics ideas on mutate operations specifically — comparing
+against it is what surfaced the `partial_failure_error` decoding gap fixed on
+2026-08-17 (see TRACKER.md). MCP support there is secondary, via a separate
+CLI package (`@openpromo/ad-platforms-cli`), not the primary design goal like
+it is here.
