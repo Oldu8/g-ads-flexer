@@ -1,0 +1,25 @@
+.venv
+.git
+.github
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+
+.env
+.env.*
+!.env.example
+
+# Real account data, never ships in the image.
+snapshots/
+
+tests/
+docs/
+refs/
+scripts/
+dev.py
+
+.vscode
+.idea
+*.md
+!README.md
