@@ -254,6 +254,12 @@ class CampaignService:
             name: New campaign name
             status: New campaign status
             bidding_strategy_type: New bidding strategy type (MANUAL_CPC, TARGET_CPA, etc.)
+                Required whenever any of the four bid-target params below are
+                set — even if you're only nudging a target value and not
+                actually changing strategy, pass the campaign's *current*
+                type here. These params are only applied inside the
+                strategy-type branch, so passing them without it raises
+                ValueError instead of silently no-op'ing.
             bidding_strategy_resource_name: Portfolio strategy resource name
             target_cpa_micros: Target CPA in micros
             target_roas: Target ROAS value
@@ -264,8 +270,34 @@ class CampaignService:
 
         Returns:
             Updated campaign details
+
+        Raises:
+            ValueError (wrapped): if a bid-target param is passed without
+                bidding_strategy_type.
         """
         try:
+            _bid_value_params = {
+                "target_cpa_micros": target_cpa_micros,
+                "target_roas": target_roas,
+                "max_conversion_value_target_roas": max_conversion_value_target_roas,
+                "target_spend_cpc_bid_ceiling_micros": target_spend_cpc_bid_ceiling_micros,
+            }
+            if bidding_strategy_type is None and any(
+                v is not None for v in _bid_value_params.values()
+            ):
+                provided = ", ".join(
+                    k for k, v in _bid_value_params.items() if v is not None
+                )
+                raise ValueError(
+                    f"{provided} require bidding_strategy_type to also be set "
+                    "(pass the campaign's *current* strategy type, e.g. "
+                    "bidding_strategy_type='MAXIMIZE_CONVERSION_VALUE', even "
+                    "when you only intend to nudge its target value, not "
+                    "switch strategies) — these fields are only read inside "
+                    "the strategy-type branch, so passing them alone "
+                    "silently no-ops instead of updating anything."
+                )
+
             customer_id = format_customer_id(customer_id)
             resource_name = f"customers/{customer_id}/campaigns/{campaign_id}"
 
@@ -452,7 +484,11 @@ def create_campaign_tools(
             status: New campaign status - ENABLED, PAUSED, REMOVED
             bidding_strategy_type: New bidding strategy - MANUAL_CPC, TARGET_CPA, TARGET_ROAS,
                 MAXIMIZE_CONVERSIONS, MAXIMIZE_CONVERSION_VALUE, TARGET_SPEND,
-                TARGET_IMPRESSION_SHARE, or PORTFOLIO
+                TARGET_IMPRESSION_SHARE, or PORTFOLIO. Required whenever any
+                bid-target param below is set — pass the campaign's
+                *current* type even if you only want to nudge a target
+                value, not switch strategies; otherwise the call raises
+                ValueError instead of silently doing nothing.
             bidding_strategy_resource_name: Portfolio bidding strategy resource name
             target_cpa_micros: Target CPA in micros
             target_roas: Target ROAS as float

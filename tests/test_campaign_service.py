@@ -399,6 +399,61 @@ async def test_update_campaign_no_changes(
     assert len(op.update_mask.paths) == 0
 
 
+@pytest.mark.asyncio
+async def test_update_campaign_nudge_max_conversion_value_roas(
+    campaign_service: CampaignService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Nudging just the ROAS target on an existing MAXIMIZE_CONVERSION_VALUE
+    campaign (the boo.ua "flexer" use case) applies when the caller restates
+    the campaign's current bidding_strategy_type."""
+    mock_client, expected = _mock_mutate(campaign_service)
+
+    with patch(
+        "src.services.campaign.campaign_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        result = await campaign_service.update_campaign(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            campaign_id="111222333",
+            bidding_strategy_type="MAXIMIZE_CONVERSION_VALUE",
+            max_conversion_value_target_roas=8.5,
+        )
+
+    assert result == expected
+    request = mock_client.mutate_campaigns.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.update.maximize_conversion_value.target_roas == 8.5
+    assert "maximize_conversion_value" in op.update_mask.paths
+
+
+@pytest.mark.asyncio
+async def test_update_campaign_bid_value_without_strategy_type_raises(
+    campaign_service: CampaignService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Passing a bid-target value without bidding_strategy_type must raise
+    loudly, not silently no-op (regression test for the flexer-blocking bug
+    found 2026-08-17: these params were only read inside the
+    `if bidding_strategy_type is not None` branch)."""
+    mock_client, _ = _mock_mutate(campaign_service)
+
+    with pytest.raises(Exception) as exc_info:
+        await campaign_service.update_campaign(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            campaign_id="111222333",
+            max_conversion_value_target_roas=8.5,
+        )
+
+    assert "bidding_strategy_type" in str(exc_info.value)
+    assert "max_conversion_value_target_roas" in str(exc_info.value)
+    mock_client.mutate_campaigns.assert_not_called()  # type: ignore
+
+
 # ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
