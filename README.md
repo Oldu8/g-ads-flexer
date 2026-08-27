@@ -97,7 +97,7 @@ Available groups:
 
 | Group | Includes |
 |-------|----------|
-| `core` | Customers, campaigns, budgets, ad groups, keywords, ads, conversions, GAQL |
+| `core` | Customers, campaigns, budgets, ad groups, keywords, ads, conversions, GAQL, pending-change review/approve |
 | `assets` | Assets, asset groups, asset sets, campaign/ad group/customer assets |
 | `targeting` | Criteria, geo targets, audiences, custom interests, user lists |
 | `bidding` | Strategies, bid modifiers, data exclusions, seasonality adjustments |

@@ -152,6 +152,7 @@ from src.servers.offline_user_data_job_server import (
 from src.servers.payments_account_server import (
     payments_account_server,
 )
+from src.servers.pending_change_server import pending_change_server
 from src.servers.product_link_server import product_link_server
 from src.servers.reach_plan_server import reach_plan_server
 from src.servers.recommendation_server import recommendation_server
@@ -178,7 +179,8 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Available server groups:
-  core        - Essential services (customer, campaign, budget, ad groups, keywords, ads)
+  core        - Essential services (customer, campaign, budget, ad groups, keywords, ads,
+                pending-change review/approve for guarded writes)
   assets      - Asset management services
   targeting   - Targeting and audience services
   bidding     - Bidding strategies and modifiers
@@ -285,6 +287,7 @@ SERVER_GROUPS = {
         ("ad_group_ad", ad_group_ad_server),
         ("conversion", conversion_server),
         ("google_ads", google_ads_server),
+        ("pending_change", pending_change_server),
     ],
     "assets": [
         ("asset", asset_server),
