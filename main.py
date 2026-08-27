@@ -123,6 +123,7 @@ from src.servers.customizer_attribute_server import (
 from src.servers.data_link_server import data_link_server
 from src.servers.experiment_arm_server import experiment_arm_server
 from src.servers.experiment_server import experiment_server
+from src.servers.fixes_log_server import fixes_log_server
 from src.servers.geo_target_constant_server import geo_target_constant_server
 from src.servers.google_ads_field_server import google_ads_field_server
 from src.servers.google_ads_server import google_ads_server
@@ -180,7 +181,8 @@ def parse_arguments():
         epilog="""
 Available server groups:
   core        - Essential services (customer, campaign, budget, ad groups, keywords, ads,
-                pending-change review/approve for guarded writes)
+                pending-change review/approve for guarded writes, fixes-log
+                Google Sheet sync)
   assets      - Asset management services
   targeting   - Targeting and audience services
   bidding     - Bidding strategies and modifiers
@@ -288,6 +290,7 @@ SERVER_GROUPS = {
         ("conversion", conversion_server),
         ("google_ads", google_ads_server),
         ("pending_change", pending_change_server),
+        ("fixes_log", fixes_log_server),
     ],
     "assets": [
         ("asset", asset_server),

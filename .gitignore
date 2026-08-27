@@ -129,6 +129,10 @@ celerybeat.pid
 
 # Environments
 .env
+# Google Cloud service account keys (Sheets sync) - downloaded JSON keys
+# live in the project root per the user's setup; never commit these.
+absolute-router-504816-h1-b97b07f70a1c.json
+*-service-account*.json
 .venv
 env/
 venv/

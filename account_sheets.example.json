@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy to snapshots/account_sheets.json (already gitignored) and fill in real values. Flat map: customer_id (no hyphens) -> that account's Google Sheet id (the segment of its URL between /d/ and /edit). One ad account = one sheet, never shared across accounts.",
+  "1234567890": "spreadsheet_id_for_account_1234567890",
+  "0987654321": "spreadsheet_id_for_account_0987654321"
+}
