@@ -1,5 +1,314 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-08-27 (7) — Every apply auto-logs to the fixes sheet; Date column format enforced
+
+Two explicit user requests, both implemented and live-verified against the
+real boo.ua sheet.
+
+**1. `apply_pending_change` now always logs, automatically** - closes the
+gap flagged two entries below ("logging depends on the agent remembering
+to call `log_fix` separately - nothing enforces it"). User's call: this
+must not be optional.
+- `PendingChangeService.__init__` gains `fixes_log_service` (defaults to a
+  real `FixesLogService()`).
+- `propose_add_keywords` gains `expectation` and `account_name` - both
+  optional, stored in the pending-change record's `params`, carried through
+  to the auto-log call on apply (become the sheet's "Expected Outcome" and
+  the one-time sheet title, respectively).
+- `apply_pending_change`, after the real mutation succeeds and the record
+  is marked `applied`, now always calls `FixesLogService.log_fix` with
+  `fix_id=change_id` (reuses the pending-change id directly - one id
+  traceable in both `snapshots/pending_changes.json` and the sheet),
+  `what` derived from `kind`/`negative` ("Added keywords" /
+  "Added negative keywords"), `fix_text=`the existing human-readable
+  preview, `when=`today (ISO, always valid by construction),
+  `expectation=params.get("expectation") or "(not specified)"`.
+- **Deliberately best-effort only for the logging step, not the mutation**:
+  wrapped in try/except - a Sheets-side failure (bad creds, no sheet
+  mapped for this account) is caught, logged as a warning, and surfaced in
+  the result as `fixes_log_error` - it must never look like the Ads change
+  itself didn't happen, since that already succeeded and a downstream
+  logging hiccup can't undo it.
+- Live-verified: propose→apply round trip (Ads call mocked to avoid a real
+  keyword mutation just for this test, `FixesLogService` real) produced
+  `fixes_log_error: None` and a real row in the boo.ua sheet; cleaned up
+  after.
+
+**2. Date column format is now enforced, not just documented** - user
+asked this be made explicit given that a later review has to parse it to
+compute elapsed days. `fixes_log_service.py` adds `DATE_FORMAT = "%Y-%m-%d"`
+and `_validate_date()`, called at the top of `log_fix` - raises `ValueError`
+with a clear message for anything not exactly `YYYY-MM-DD` (tested against
+`27.08.2026`, `08/27/2026`, a datetime-with-time string, `"Aug 27, 2026"`,
+`2026/08/27`, and garbage input - all correctly rejected).
+
+Tests: 8 new in `test_pending_change_service.py` (auto-log call assertion,
+negative-keywords label, survives-fixes-log-failure) + 8 new in
+`test_fixes_log_service.py` (valid ISO date passes, 6 invalid formats
+rejected). 664 passed / 4 skipped overall (up from 655). `ruff format` +
+`pyright` clean.
+
+## ✅ 2026-08-27 (6) — Sheets service account wired up; headers switched to English; first-use auto-format/rename
+
+**Service account setup completed** (user, this session): key file
+`absolute-router-504816-h1-b97b07f70a1c.json` placed at the repo root,
+added to `.gitignore` (plus a `*-service-account*.json` catch-all pattern
+for future keys), `.env`'s `GOOGLE_SHEETS_CREDENTIALS_FILE` points at it.
+
+**Headers/title now English, data stays whatever language the user writes
+in** (user's explicit split): `HEADER` in `fixes_log_sheet.py` changed from
+Russian to `What | Fix | Status | Date | Expected Outcome | 1-Week Review |
+2-Week Review | 1-Month Review | Conclusion | ID`. `DEFAULT_STATUS` changed
+to `"Collecting data"`. `_REVIEW_PERIOD_COLUMNS` in `fixes_log_service.py`
+updated to match. No migration concern - no real Sheet had been written to
+yet (the Sheets integration was only wired up minutes earlier this same
+session), so there's no existing-data breakage from this rename.
+
+**First-use auto-formatting/rename, for the user's newly-created empty
+sheet:** `FixesLogSheet._get_worksheet()`'s existing "create the tab if
+missing" branch (already the correct "is this fresh?" signal - a new
+spreadsheet's default "Sheet1" tab never matches our "Fixes" tab name) now
+also, once, on creation only:
+- Bolds + freezes the header row (`_format_new_worksheet`, uses a new
+  `_column_letter(n)` helper for A1-notation - e.g. 10 -> "J").
+- Renames the *spreadsheet's* title (not just the tab) to
+  `"{account_name} - {customer_id} - Fixes Log"` via
+  `_rename_spreadsheet_title` (falls back to `"{customer_id} - Fixes Log"`
+  if no account name is known, skips entirely if neither is known).
+Both are best-effort (formatting/rename failure logs a warning, never
+blocks the actual data write that triggered them) and both are threaded
+through `FixesLogSheet.for_customer(customer_id, account_name=...)` and
+`FixesLogService.log_fix(..., account_name=...)` - `account_name` is
+harmless to pass on every call, it's only ever consulted the first time a
+given account's sheet is touched.
+
+Tests: 14 new (formatting/rename behavior, `_column_letter`, account_name
+threading through the resolver) across `test_fixes_log_sheet.py` /
+`test_fixes_log_service.py`. 655 passed / 4 skipped overall (up from 641).
+`ruff format` + `pyright` clean.
+
+**Still needed before this can be used live (blocked on info only the user
+has):** the new empty spreadsheet's id and which `customer_id` it's for,
+to add as an entry in `snapshots/account_sheets.json` (not yet created -
+only `account_sheets.example.json`, the committed template, exists).
+
+## ✅ 2026-08-27 (5) — Fixed: fixes-log Sheet is now one-per-account, not one-per-process
+
+Closes gap #2 from the V2 roadmap's analysis (previous entry) - the one the
+user asked to fix immediately rather than defer, since it's already a real
+risk today (their own MCC has 2 accounts).
+
+**What changed:**
+- `src/services/review/fixes_log_sheet.py`: added
+  `load_account_sheet_map(path=None)` (reads a flat `customer_id ->
+  spreadsheet_id` JSON file, `snapshots/account_sheets.json` by default,
+  overridable via `GOOGLE_SHEETS_ACCOUNT_MAP_FILE`; missing file → `{}`,
+  malformed file → loud `FixesLogSheetError`, hyphens stripped from keys)
+  and `FixesLogSheet.for_customer(customer_id)` (a classmethod: map lookup
+  first, then the single-account `GOOGLE_SHEETS_SPREADSHEET_ID` env var as
+  fallback, then a clear error if neither resolves - never guesses/mixes
+  accounts into the wrong sheet).
+- `src/services/review/fixes_log_service.py`: `FixesLogService` no longer
+  holds one fixed `FixesLogSheet` - it takes an injectable `sheet_resolver`
+  (default `FixesLogSheet.for_customer`) and every method
+  (`log_fix`/`list_fixes`/`update_fix_review`/`update_fix_conclusion`) now
+  requires `customer_id`, resolving (and caching, per service instance) the
+  right sheet per account. Same change propagated to the MCP tool
+  signatures in `create_fixes_log_tools`.
+- `account_sheets.example.json` added at the repo root (committed, format
+  template - the real file, `snapshots/account_sheets.json`, is gitignored
+  like the rest of `snapshots/`). `.env.example` documents
+  `GOOGLE_SHEETS_ACCOUNT_MAP_FILE`.
+- Tests: rewrote `tests/test_fixes_log_service.py` for the new
+  `customer_id`-per-call/`sheet_resolver` shape (including a test that two
+  different accounts route to two different mock sheets, and that repeat
+  calls for the same account reuse - don't re-resolve - the cached sheet);
+  added `load_account_sheet_map`/`for_customer` coverage to
+  `tests/test_fixes_log_sheet.py` (map lookup, env fallback, map-wins-over-
+  fallback, missing-both error, two accounts get two sheets). 641 passed /
+  4 skipped overall (up from 630). `ruff format` + `pyright` clean.
+
+**Explicitly not done (out of scope for this fix, still tracked in
+`docs/V2_COMMERCIAL_ROADMAP.md`):** this is data-routing, not
+authorization. Nothing stops a caller from passing any `customer_id` it
+wants - it just now always lands in *that* account's own sheet, correctly,
+instead of possibly the wrong one. The pending-change store
+(`snapshots/pending_changes.json`) has the same one-per-process shape and
+wasn't touched here - user asked specifically for the Sheet fix, not that
+one.
+
+## 📋 2026-08-27 (4) — V2 commercial vision recorded: `docs/V2_COMMERCIAL_ROADMAP.md`
+
+Full v2 spec (admin panel + auth, encrypted credential storage, per-account
+entitlement so a client can enable account A but not account B within their
+MCC, "1 sheet = 1 ad account" as a hard rule, billing deferred until demand
+is validated) is written up in
+[`docs/V2_COMMERCIAL_ROADMAP.md`](./docs/V2_COMMERCIAL_ROADMAP.md) — not
+started, not being built now. That doc also carries the gap analysis
+against today's code (no account-level authorization anywhere; the
+fixes-log Sheet and pending-change store are both one-per-process, not
+one-per-account; no tenant/client identity concept at all) — read it before
+touching any of `sdk_client.py`, `fixes_log_sheet.py`, or
+`pending_change_store.py` with multi-account/multi-client changes in mind.
+
+**Practical near-term note (relevant now, not just for v2):** the user's
+own MCC already has 2 ad accounts, and the "1 sheet = 1 account" rule isn't
+enforced in code yet - nothing stops a `log_fix` call for one account
+landing in a sheet configured for another if both are used from the same
+running instance. Be manually careful about which sheet/account a given
+deployment is pointed at until this is enforced in code.
+
+## 🎯 2026-08-27 (3) — Commercial model clarified: per-client credentials, single-tenant until first paying client
+
+User's original framing (a shared MCC, clients just link their account
+under it) is **rejected** — correctly, on reflection: agencies run their own
+MCCs and won't grant an external one access, and the user doesn't want to
+hold those permissions either (sound liability reasoning, not just
+preference). Real target model instead: **each client gets their own
+Google Ads API credentials** (their own developer token application, their
+own OAuth client, their own refresh token) - no credential sharing between
+clients at the Ads API layer.
+
+**The bigger ask this surfaced** - selling access as a product - is a real
+pivot, written down here so it isn't lost, but **explicitly deferred**:
+client logs into a future admin panel, submits their own tokens, we store
+them server-side (DB), and issue a unique MCP token per connected account
+(billing per connected account). That requires: encrypted-at-rest storage
+for other companies' API secrets (a real secrets manager, not a DB column -
+this is other people's money on the line, not a detail to rush), a
+login/admin web app, reworking `sdk_client.py`'s global
+`get_sdk_client()`/`set_sdk_client()` singleton into per-request credential
+resolution keyed by the incoming MCP token, and a billing/metering
+integration. **None of this is started.** User's explicit decision when
+asked: validate demand with one real paying client on the current
+single-tenant model first, not build multi-tenant infra speculatively.
+
+**What's the Sheets service-account question resolved to:** unlike Ads API
+access, sharing one Google Sheet with a service account is a narrow grant
+(that one file, not the account/MCC) - there's no version of the MCC
+objection here. One shared service account across all clients is fine to
+start; per-client service accounts (for blast-radius isolation, can be
+scripted later via the Cloud IAM API) are a "when you want it" upgrade, not
+a requirement forced by the credentials decision above.
+
+**Docs:** `docs/CLIENT_ONBOARDING.md` rewritten to match (was written
+first under the now-rejected shared-MCC assumption, corrected same
+session) - per-client Google Ads credential setup (step 1, the slow part -
+Google's developer-token review, not something either side can speed up),
+Sheets sharing (step 2-3), one deployment per client (step 4, matches
+today's `sdk_client.py`/env-var-per-process reality - see the multi-tenant
+gap above for why "one process, many clients" isn't supported yet).
+
+## ✅ 2026-08-27 (2) — Fixes log moved to a Google Sheet, replacing `snapshots/fixes_log.json`
+
+User showed their existing hand-maintained tracking spreadsheet (columns:
+Что | Фикс | Статус | Когда | Ожидание | Через неделю | Через 2 недели |
+Через месяц | Вывод, grouped into month sections) and asked to sync into
+*that*, not a local file — reasoning: every marketer already has a Google
+account and uses spreadsheets; a per-client DB (Supabase/Mongo, floated in
+the entry right below) doesn't make sense for a commercial product where
+onboarding a new client should be "share your sheet with us," not "provision
+infra." **Decision: the Google Sheet is now the sole source of truth** — no
+more dual-write, `snapshots/fixes_log.json` is superseded (its 2 existing
+entries, `F-20260827-01`/`02`, still need manual migration into the sheet
+once it's set up — not done automatically, see below). Also decided:
+replicate the full column set (not a simplified flat log), but **no
+cron/schedule** — the three time-boxed review columns and Вывод are only
+ever written when a session is explicitly asked to check on fixes, never on
+a timer.
+
+**What was built:**
+- Added `gspread` as a real dependency (`pyproject.toml`) — chose a Google
+  Cloud **service account** over OAuth specifically because it makes
+  client onboarding "share this email with Editor access," no consent
+  screen, no per-client refresh token to mint/store.
+- `src/services/review/fixes_log_sheet.py` — `FixesLogSheet`, a thin
+  gspread wrapper. Sheet layout matches the user's existing columns exactly
+  (`HEADER` constant), plus one trailing **`ID`** column after Вывод —
+  machine-only, holds the fix id so a later review can find the row again
+  without disturbing the sheet's existing human-facing layout/formatting
+  (month-section header bands, the Статус dropdown, etc. — this code only
+  appends rows or writes single cells, never touches formatting). Auth and
+  the actual gspread/Sheets connection are fully lazy and injectable — pass
+  `worksheet=` directly to bypass Google auth entirely (used by tests).
+- `src/services/review/fixes_log_service.py` — `FixesLogService`, 4 tools:
+  `log_fix` (append a new row — Что/Фикс/Статус/Когда/Ожидание; the
+  time-boxed columns start blank), `list_fixes` (read all rows back),
+  `update_fix_review` (write into "Через неделю"/"Через 2 недели"/"Через
+  месяц" for one fix, by id), `update_fix_conclusion` (write "Вывод" and
+  optionally a new "Статус"). Deliberately dumb: this service does **not**
+  compute the observed-results text itself — pulling/interpreting metrics
+  is the calling agent's job (via the existing search/GAQL tools); this
+  service only ever writes whatever text it's given. Keeps "what does good
+  look like" logic out of this service and in the agent doing the
+  reviewing, where judgment calls belong.
+- `src/servers/fixes_log_server.py`, registered in `main.py`'s `"core"`
+  group (no `.mcp.json` edit needed, same as `pending_change`).
+- Env vars documented in `.env.example`:
+  `GOOGLE_SHEETS_CREDENTIALS_FILE`/`GOOGLE_SHEETS_CREDENTIALS_JSON` (one or
+  the other), `GOOGLE_SHEETS_SPREADSHEET_ID`, optional
+  `GOOGLE_SHEETS_WORKSHEET_NAME` (default `"Fixes"`).
+- Tests: `tests/test_fixes_log_sheet.py` (9) + `tests/test_fixes_log_service.py`
+  (10) — all against an injected mock worksheet, no real Google Sheets
+  calls. 630 passed / 4 skipped overall (up from 611). `ruff format` +
+  `pyright` clean.
+
+**Not done yet — needs the user's one-time external setup before this can
+be used live** (can't be done from inside this codebase): enable the Google
+Sheets API on a GCP project, create the service account + JSON key, share
+the actual tracking sheet with its email. Once that's done: (1) set the
+three env vars, (2) migrate `F-20260827-01`/`F-20260827-02` from
+`snapshots/fixes_log.json` into the sheet by hand or via one `log_fix` call
+each, (3) `snapshots/fixes_log.json` can be deleted — nothing reads it
+anymore.
+
+## 📋 2026-08-27 — Fixes log started: `snapshots/fixes_log.json`
+
+**Superseded by the entry above (2026-08-27 (2)) — kept here for the
+in-file rationale/history, but the JSON file is no longer where new fixes
+should be logged.**
+
+User wants a running log of live-account changes ("fixes") so results can be
+checked back against expectations later ("проверь статусы по фиксам, будем
+смотреть какие результаты"). **User's own framing:** for a real commercial
+release this should be an external DB (MongoDB or Supabase, picked for their
+free tiers) so it's queryable/shareable properly — but that's future scope.
+For now it's a local JSON file, same pattern as the `pending_change_store`
+guardrail in the entry right below (`snapshots/` is already gitignored for
+real business data).
+
+**File:** `snapshots/fixes_log.json` — `{"fixes": [...]}`, one object per
+change. Fields: `id` (`F-YYYYMMDD-NN`), `date`, `customer_id`, `campaign_id`,
+`campaign_name`, `change_type`, `summary` (one-liner), `details` (full
+specifics — keywords/lists touched, resource IDs, bids), `expected_outcome`
+(free text: which metric should move and which direction — volume, CPA,
+cost, IS, etc. — this is the hypothesis to check later), `status`
+(`"open"` until reviewed, then update in place — no fixed vocabulary yet for
+the reviewed states, use judgment: e.g. `"confirmed_positive"` /
+`"confirmed_negative"` / `"inconclusive"` / `"reverted"`), `review_log`
+(array of `{date, note}` appended each time someone checks back on it —
+never delete `review_log` history, only append).
+
+**Workflow going forward:** any session that makes a live change to the
+boo.ua (or other managed) account via the MCP tools should append a fix
+record here — read the existing file first (don't clobber), append, write
+back the full array. When the user asks to "check fix statuses," read this
+file, re-pull the relevant metrics for each `status: "open"` record's
+`campaign_id` since its `date`, compare against `expected_outcome`, and
+append a dated note to `review_log` (updating `status` once there's enough
+signal). First two entries (`F-20260827-01`, `F-20260827-02`) are the
+EXACT-keyword additions and negative-keyword additions made this session to
+`SNDS / Brand / Ukr / Exact` (`19694406202`) — see the file for full detail;
+the business context behind them (boo.ua account structure, the sister-brand
+"Благо" relationship, the account's existing shared negative-keyword-list
+inventory) lives in this user's Claude memory, not in this repo.
+
+**Not done yet:** no tooling/script reads or writes this file
+programmatically (it's hand-maintained by whichever session makes the
+change) — a small `scripts/`-style helper (append a record, list open
+records, list records due for review) would remove the "did I forget to log
+this" risk if this keeps getting used session over session.
+
 ## ✅ 2026-08-26 (2) — First guardrail built: propose/apply/reject review workflow for writes
 
 Directly addresses the "zero safety mechanisms" gap flagged in the entry
