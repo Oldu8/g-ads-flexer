@@ -1,5 +1,120 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-08-26 (2) — First guardrail built: propose/apply/reject review workflow for writes
+
+Directly addresses the "zero safety mechanisms" gap flagged in the entry
+right below. User's decision when asked: build the structural guarantee
+into the tools themselves (not just a chat-review convention), with plain
+Claude Code chat as the review surface for now (no separate UI yet).
+
+**What was built** (new files, all under a new `review` service category —
+this is our own guardrail layer, not a Google Ads API concept, so it doesn't
+belong under any existing v25-service category):
+- `src/services/review/pending_change_store.py` — `PendingChangeStore`, a
+  JSON-file-backed store of change records (id, kind, status, params,
+  human-readable preview, timestamps, result/rejection-reason). File lives
+  at `snapshots/pending_changes.json` — reused the existing `snapshots/`
+  gitignore convention ("real business data - keep out of git") rather than
+  adding a new ignore rule. This file **also doubles as the human-readable
+  audit trail** that was flagged as missing in the entry below.
+- `src/services/review/pending_change_service.py` — `PendingChangeService`
+  with 5 tools: `propose_add_keywords` (validates + stores a preview,
+  **never calls the Google Ads API**), `list_pending_changes`,
+  `get_pending_change`, `apply_pending_change` (the *only* method that ever
+  calls the API, and only for a record still `"pending"` — refuses to
+  re-run an already-applied/rejected change), `reject_pending_change`
+  (discards, never touches the API). Wraps the existing, already-tested
+  `AdGroupCriterionService.add_keywords` rather than duplicating its proto
+  logic — the guarantee lives entirely in the propose/apply split.
+- `src/servers/pending_change_server.py` + registered in `main.py`'s
+  `"core"` group (so it's reachable without editing `.mcp.json`'s
+  `--groups` list — just needs the MCP connection restarted to pick up the
+  new tool).
+- Tests: `tests/test_pending_change_store.py` (9 tests) +
+  `tests/test_pending_change_service.py` (12 tests) — cover the propose→
+  never-calls-API guarantee, apply→calls-the-real-service-once,
+  double-apply/apply-after-reject both raising, and the tool-wrapper round
+  trip. 611 passed / 4 skipped overall (up from 590). `ruff format` +
+  `pyright` clean.
+
+**Scope of this first pass — deliberately narrow:** only `add_keywords`
+(covers the user's stated example: "add more keywords to the brand
+campaign" and negative-keyword additions) is wired through
+`apply_pending_change`'s dispatch. Extending to budget/bid changes (the
+other in-scope "flexer" ops) means adding one more `propose_*` method plus
+one more `if kind == ...` branch — the store and tool-registration plumbing
+already support additional kinds without changes.
+
+**Not done yet:**
+- No magnitude/sanity limits on what can be proposed (e.g. nothing stops
+  proposing 500 keywords at once, or a keyword that's obviously a
+  competitor brand name — the human review step is still the only filter).
+- No budget/bid `propose_*` yet — only keywords.
+- The "standard request set" the user wants pinned down (see below) hasn't
+  been used to check this covers what's actually needed day-to-day.
+
+## 🎯 2026-08-26 — End goal restated by user, tracked as its own open item: an on-demand agent reachable from anywhere, not just local Claude Code
+
+**The actual product goal** (user, this session, verbatim intent): a service
+they connect to through Claude and give plain commands to — "give me info on
+campaign X", "change this budget", "expand these keywords" — that actually
+executes against the live boo.ua account. Not code edits, not a dashboard:
+conversational read + write against the real account.
+
+**Where this stands right now:**
+
+- ✅ **Already works today, but only from Claude Code running locally in
+  this repo, on this machine.** Verified live in this session: the
+  project's `.mcp.json` (now committed to `main`) tells Claude Code to
+  launch `uv run python main.py --groups core,reporting,targeting` as a
+  local MCP server; `check_sdk_client_status` confirmed the SDK client
+  initializes against real credentials, and the tool list includes both
+  reads (`search_search_campaigns`, `google_ads_search_google_ads`, ...)
+  and live mutates (`budget_update_campaign_budget`,
+  `campaign_update_campaign`, `keyword_add_keywords`,
+  `campaign_criterion_add_negative_keyword_criteria`,
+  `customer_negative_criterion_add_negative_keywords`, ...) side by side.
+  There is no "MCP vs API" split to worry about — this MCP server *is* the
+  Google Ads API wrapper; every tool it exposes is a live API call, whether
+  it reads or writes.
+- ❌ **Not solved: reaching this from anywhere other than local Claude Code
+  on this machine** (e.g. phone, browser, claude.ai). The only thing
+  actually deployed remotely is the deliberately read-only Railway server
+  (`remote_main.py`, see `gads-mcp-remote-readonly-deploy` memory) — no
+  write-capable endpoint exists outside this laptop. If "ask from my phone"
+  is actually wanted (not just "ask from this laptop's Claude Code"), that
+  requires standing up a remote write-capable deployment — auth, tool-group
+  scope, and guardrails all need deciding, same way the read-only one was
+  scoped down deliberately.
+
+**Explicitly deferred (user, this session):** not expanding TRACKER's
+remaining-26-services list further right now — will come back to it
+alongside this item later, per the "Next Steps" priorities below.
+
+**User's stated concern (2026-08-26, follow-up):** worried about the AI
+making uncontrolled changes to the live account once write is reachable
+from anywhere (not just local Claude Code). This is valid — **there are
+currently zero safety mechanisms in the write path**, at any layer:
+- No dry-run/preview — every write tool call executes immediately, with no
+  "here's what would change, confirm?" step.
+- No magnitude limits — nothing stops e.g. a budget being set to near-zero
+  or a bid target being set to an absurd value in one call.
+- No two-step confirm — one tool call = one live mutation, right now.
+- No human-readable audit trail of what the assistant changed, when, and
+  what the before/after values were — only ephemeral session logs.
+- The only current safety net is the MCP client's own tool-permission
+  prompts (Claude Code asks before calling an unapproved tool) — which
+  stops applying the moment "always allow" is granted for a tool.
+
+**Before any remote/write-reachable-from-anywhere deployment happens**,
+these guardrails need designing, not bolted on after. Not started.
+
+**Also requested: pin down the actual target "standard request set"**
+(user's words: "стандартный набор запросов") rather than guessing — e.g.
+campaign metrics for a period, raise/lower budget, add/remove negative
+keywords, show recent change history. Not yet enumerated/confirmed with
+the user.
+
 ## 🚧 2026-08-17 (3) — CURRENT TASK: prepping the write ("flexer") path for boo.ua budgets/bids
 
 **Decision (user, this session):** the write-capable service is **MCP
