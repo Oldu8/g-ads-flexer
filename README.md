@@ -50,6 +50,8 @@ Current tracker status:
 | Type policy | Generated Google Ads protobuf types |
 | Feature parity | [`docs/FEATURE_PARITY.md`](./docs/FEATURE_PARITY.md) |
 | Detailed audit | [`TRACKER.md`](./TRACKER.md) |
+| New client setup | [`docs/CLIENT_ONBOARDING.md`](./docs/CLIENT_ONBOARDING.md) |
+| V2 commercial roadmap (not built yet) | [`docs/V2_COMMERCIAL_ROADMAP.md`](./docs/V2_COMMERCIAL_ROADMAP.md) |
 
 Core campaign, ad group, ad, budget, keyword, conversion, asset, audience, recommendation, account, billing, and reporting workflows are implemented. The scannable parity table lives in [`docs/FEATURE_PARITY.md`](./docs/FEATURE_PARITY.md); detailed implementation notes live in [`TRACKER.md`](./TRACKER.md).
 
@@ -97,7 +99,7 @@ Available groups:
 
 | Group | Includes |
 |-------|----------|
-| `core` | Customers, campaigns, budgets, ad groups, keywords, ads, conversions, GAQL, pending-change review/approve |
+| `core` | Customers, campaigns, budgets, ad groups, keywords, ads, conversions, GAQL, pending-change review/approve, fixes-log Google Sheet sync |
 | `assets` | Assets, asset groups, asset sets, campaign/ad group/customer assets |
 | `targeting` | Criteria, geo targets, audiences, custom interests, user lists |
 | `bidding` | Strategies, bid modifiers, data exclusions, seasonality adjustments |
