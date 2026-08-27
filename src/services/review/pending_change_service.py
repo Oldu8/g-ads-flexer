@@ -16,13 +16,27 @@ unreviewed competitor-brand term going live). Extending to budget/bid
 changes (the other in-scope "flexer" operations per TRACKER.md) means
 adding another `propose_*` method plus a branch in `apply_pending_change`'s
 dispatch - the store and tool-registration plumbing already support it.
+
+**Every successful apply is auto-logged to the fixes-log sheet
+(2026-08-27):** unlike the propose->apply split itself, logging a change
+used to depend on the calling agent remembering to call
+`FixesLogService.log_fix` as a separate step afterwards - nothing enforced
+it. User's explicit call: every applied change MUST be logged, so
+`apply_pending_change` now calls it automatically as the last step. Logging
+is best-effort *after* the real mutation - a Sheets-side failure (bad
+credentials, no sheet mapped for this account, etc.) is caught, logged as a
+warning, and reported back in the result (`fixes_log_error`), but never
+made to look like the actual Ads mutation didn't happen - that already
+succeeded and can't be undone by a logging problem downstream.
 """
 
+from datetime import date
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastmcp import Context, FastMCP
 
 from src.services.ad_group.ad_group_criterion_service import AdGroupCriterionService
+from src.services.review.fixes_log_service import FixesLogService
 from src.services.review.pending_change_store import PendingChangeStore
 from src.utils import get_logger
 
@@ -51,11 +65,13 @@ class PendingChangeService:
         self,
         store: Optional[PendingChangeStore] = None,
         ad_group_criterion_service: Optional[AdGroupCriterionService] = None,
+        fixes_log_service: Optional[FixesLogService] = None,
     ) -> None:
         self.store = store or PendingChangeStore()
         self._ad_group_criterion_service = (
             ad_group_criterion_service or AdGroupCriterionService()
         )
+        self._fixes_log_service = fixes_log_service or FixesLogService()
 
     async def propose_add_keywords(
         self,
@@ -64,6 +80,8 @@ class PendingChangeService:
         ad_group_id: str,
         keywords: List[Dict[str, Any]],
         negative: bool = False,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Stage keywords to add to an ad group for review.
 
@@ -78,6 +96,16 @@ class PendingChangeService:
             keywords: List of keyword dicts with 'text', 'match_type', and
                 optional 'cpc_bid_micros'
             negative: Whether these are negative keywords
+            expectation: Which metric should move, and why - carried
+                through to the fixes-log sheet's "Expected Outcome" column
+                when this change is later applied (every apply is
+                auto-logged - see module docstring). Optional, but worth
+                setting since a blank hypothesis makes a later review
+                meaningless.
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                carried through to the fixes-log sheet's one-time title if
+                this account's sheet hasn't been initialized yet. Harmless
+                to omit.
 
         Returns:
             change_id, status ("pending"), and a human-readable preview
@@ -96,6 +124,8 @@ class PendingChangeService:
                 "ad_group_id": ad_group_id,
                 "keywords": keywords,
                 "negative": negative,
+                "expectation": expectation,
+                "account_name": account_name,
             },
             preview=preview,
         )
@@ -149,6 +179,14 @@ class PendingChangeService:
         This is the only method in this service that calls the Google Ads
         API. Refuses to run if the change isn't in "pending" status (e.g.
         already applied or rejected) rather than silently re-running it.
+
+        Every successful apply is automatically logged to the fixes-log
+        sheet as its last step (see module docstring) - this is not
+        optional/best-effort on the Ads-mutation side, but the *logging*
+        step itself is best-effort: a Sheets-side failure is caught and
+        reported in the result (`fixes_log_error`) rather than raised,
+        since the real change already happened and can't be undone by a
+        downstream logging problem.
         """
         record = self.store.get(change_id)
         if record is None:
@@ -170,6 +208,11 @@ class PendingChangeService:
                 keywords=params["keywords"],
                 negative=params.get("negative", False),
             )
+            what_label = (
+                "Added negative keywords"
+                if params.get("negative")
+                else "Added keywords"
+            )
         else:
             raise Exception(f"Unknown pending-change kind: {kind}")
 
@@ -178,11 +221,35 @@ class PendingChangeService:
             level="info",
             message=f"Applied pending change {change_id} ({kind})",
         )
+
+        fixes_log_error: Optional[str] = None
+        try:
+            await self._fixes_log_service.log_fix(
+                ctx=ctx,
+                customer_id=params["customer_id"],
+                fix_id=change_id,
+                what=what_label,
+                fix_text=record["preview"],
+                when=date.today().isoformat(),
+                expectation=params.get("expectation") or "(not specified)",
+                account_name=params.get("account_name"),
+            )
+        except Exception as e:
+            fixes_log_error = str(e)
+            await ctx.log(
+                level="warning",
+                message=(
+                    f"Applied change {change_id} successfully, but failed to "
+                    f"log it to the fixes-log sheet: {e}"
+                ),
+            )
+
         return {
             "change_id": change_id,
             "status": updated["status"],
             "applied_at": updated["applied_at"],
             "result": result,
+            "fixes_log_error": fixes_log_error,
         }
 
     async def reject_pending_change(
@@ -223,6 +290,8 @@ def create_pending_change_tools(
         ad_group_id: str,
         keywords: List[Dict[str, Any]],
         negative: bool = False,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Stage keywords to add to an ad group for human review before
         they reach the live account. Does NOT call the Google Ads API -
@@ -237,6 +306,13 @@ def create_pending_change_tools(
                 - match_type: EXACT, PHRASE, or BROAD (default: BROAD)
                 - cpc_bid_micros: Optional CPC bid override
             negative: Whether these are negative keywords
+            expectation: Which metric should move, and why - every applied
+                change is auto-logged to the fixes-log sheet, and this
+                becomes its "Expected Outcome" - set it, a blank hypothesis
+                makes a later review meaningless
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                used for the fixes-log sheet's one-time title if it hasn't
+                been initialized yet; harmless to omit
 
         Returns:
             change_id, status ("pending"), and a human-readable preview
@@ -247,6 +323,8 @@ def create_pending_change_tools(
             ad_group_id=ad_group_id,
             keywords=keywords,
             negative=negative,
+            expectation=expectation,
+            account_name=account_name,
         )
 
     async def list_pending_changes(
@@ -273,6 +351,11 @@ def create_pending_change_tools(
         account. Only call this after the user has explicitly reviewed and
         approved the change's preview - never call it in the same turn as
         propose_* without the user confirming in between.
+
+        Automatically logs the change to the fixes-log Google Sheet as its
+        last step - no separate log_fix call needed. If that logging step
+        fails, the result's `fixes_log_error` says why, but the Ads change
+        itself already succeeded regardless.
 
         Args:
             change_id: The change ID returned by a propose_* tool

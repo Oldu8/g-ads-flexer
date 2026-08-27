@@ -1,5 +1,6 @@
 """Tests for PendingChangeService (propose/apply/reject review workflow)."""
 
+from datetime import date
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
@@ -8,6 +9,7 @@ import pytest
 from fastmcp import Context
 
 from src.services.ad_group.ad_group_criterion_service import AdGroupCriterionService
+from src.services.review.fixes_log_service import FixesLogService
 from src.services.review.pending_change_service import (
     PendingChangeService,
     create_pending_change_tools,
@@ -23,13 +25,23 @@ def mock_ad_group_criterion_service() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_fixes_log_service() -> AsyncMock:
+    """A mocked FixesLogService - every successful apply must log to this,
+    automatically, without a separate explicit call."""
+    return AsyncMock(spec=FixesLogService)
+
+
+@pytest.fixture
 def pending_change_service(
-    tmp_path: Path, mock_ad_group_criterion_service: AsyncMock
+    tmp_path: Path,
+    mock_ad_group_criterion_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
 ) -> PendingChangeService:
     store = PendingChangeStore(path=tmp_path / "pending_changes.json")
     return PendingChangeService(
         store=store,
         ad_group_criterion_service=mock_ad_group_criterion_service,
+        fixes_log_service=mock_fixes_log_service,
     )
 
 
@@ -181,6 +193,7 @@ async def test_get_pending_change_missing_raises(
 async def test_apply_pending_change_calls_ad_group_criterion_service(
     pending_change_service: PendingChangeService,
     mock_ad_group_criterion_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
     mock_ctx: Context,
 ) -> None:
     mock_ad_group_criterion_service.add_keywords.return_value = {
@@ -193,6 +206,8 @@ async def test_apply_pending_change_calls_ad_group_criterion_service(
         ad_group_id="111222",
         keywords=[{"text": "buy shoes online", "match_type": "PHRASE"}],
         negative=False,
+        expectation="Impressions should rise on brand terms",
+        account_name="boo.ua",
     )
 
     result = await pending_change_service.apply_pending_change(
@@ -208,6 +223,19 @@ async def test_apply_pending_change_calls_ad_group_criterion_service(
     )
     assert result["status"] == "applied"
     assert result["result"] == mock_ad_group_criterion_service.add_keywords.return_value
+    assert result["fixes_log_error"] is None
+
+    # Every successful apply must be auto-logged - no separate call needed.
+    mock_fixes_log_service.log_fix.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        fix_id=proposed["change_id"],
+        what="Added keywords",
+        fix_text=proposed["preview"],
+        when=date.today().isoformat(),
+        expectation="Impressions should rise on brand terms",
+        account_name="boo.ua",
+    )
 
     # A second apply must not be allowed to re-run the mutation.
     with pytest.raises(Exception, match="already 'applied'"):
@@ -215,6 +243,66 @@ async def test_apply_pending_change_calls_ad_group_criterion_service(
             ctx=mock_ctx, change_id=proposed["change_id"]
         )
     mock_ad_group_criterion_service.add_keywords.assert_called_once()
+    mock_fixes_log_service.log_fix.assert_called_once()  # not called again
+
+
+@pytest.mark.asyncio
+async def test_apply_pending_change_negative_keywords_label(
+    pending_change_service: PendingChangeService,
+    mock_ad_group_criterion_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    mock_ad_group_criterion_service.add_keywords.return_value = {"results": []}
+
+    proposed = await pending_change_service.propose_add_keywords(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        ad_group_id="111222",
+        keywords=[{"text": "competitor brand"}],
+        negative=True,
+    )
+
+    await pending_change_service.apply_pending_change(
+        ctx=mock_ctx, change_id=proposed["change_id"]
+    )
+
+    assert (
+        mock_fixes_log_service.log_fix.call_args.kwargs["what"]
+        == "Added negative keywords"
+    )
+    assert (
+        mock_fixes_log_service.log_fix.call_args.kwargs["expectation"]
+        == "(not specified)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_apply_pending_change_survives_fixes_log_failure(
+    pending_change_service: PendingChangeService,
+    mock_ad_group_criterion_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    """A Sheets-side failure must not make it look like the Ads mutation
+    didn't happen - it already did, and can't be undone by a logging
+    problem downstream."""
+    mock_ad_group_criterion_service.add_keywords.return_value = {"results": []}
+    mock_fixes_log_service.log_fix.side_effect = Exception("no sheet configured")
+
+    proposed = await pending_change_service.propose_add_keywords(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        ad_group_id="111222",
+        keywords=[{"text": "buy shoes online"}],
+    )
+
+    result = await pending_change_service.apply_pending_change(
+        ctx=mock_ctx, change_id=proposed["change_id"]
+    )
+
+    assert result["status"] == "applied"
+    assert result["fixes_log_error"] == "no sheet configured"
 
 
 @pytest.mark.asyncio
