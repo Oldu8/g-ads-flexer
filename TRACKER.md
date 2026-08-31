@@ -1,5 +1,93 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-08-27 (9) — propose/apply extended to budgets and bid targets, not just keywords
+
+Closes the last "Not done yet" item several entries below ("only
+add_keywords is wired through apply_pending_change's dispatch"). User's
+ask: "давай сделаем любое изменение через propose/apply" - budgets and bid
+targets are the other two operations that were always in scope per
+TRACKER's "flexer" framing (see the 2026-08-13-era entries), so those are
+what got added; still not literally *every* Google Ads write, see "Not yet
+covered" below.
+
+`src/services/review/pending_change_service.py` gains two more `propose_*`
+methods and matching `apply_pending_change` dispatch branches:
+
+- **`propose_update_campaign_budget`** - `budget_id` + `new_amount_micros`
+  (+ optional `current_amount_micros` for a before/after delta in the
+  preview). Rejects `new_amount_micros <= 0` up front. Applies via the
+  existing, already-tested `BudgetService.update_campaign_budget`.
+- **`propose_update_campaign_bid_target`** - `campaign_id` +
+  `bidding_strategy_type` + whichever of `target_cpa_micros`/
+  `target_roas`/`max_conversion_value_target_roas` matches that type (+
+  optional `current_value`). **Validates the type/param pairing at propose
+  time** - the exact silent-no-op trap the 2026-08-17 `campaign_service.py`
+  fix closed (passing `target_roas` with `MAXIMIZE_CONVERSION_VALUE`
+  instead of `max_conversion_value_target_roas`, or any target value
+  without `bidding_strategy_type` at all) is now rejected here with a clear
+  `ValueError`, before a preview even exists to approve - no point letting
+  a proposal through that would do nothing when applied. Applies via the
+  existing, already-tested `CampaignService.update_campaign`.
+
+Both new `propose_*` methods accept `expectation`/`account_name` exactly
+like `propose_add_keywords` does, and both apply branches feed the same
+auto-log-to-fixes-sheet path from entry (7) - `what` becomes "Updated
+campaign budget" / "Updated campaign bid target" respectively.
+
+**Design choice carried over from the fixes-log service**: neither propose
+method fetches the "current" value itself (no read call) - `current_amount_micros`/
+`current_value` are optional params the calling agent fills in from a
+search/GAQL call it already made, keeping this service a thin dispatcher
+rather than a second place with its own Google Ads read logic.
+
+`PendingChangeService.__init__` gains `budget_service`/`campaign_service`
+params (both default to a real instance, matching the existing
+`ad_group_criterion_service` pattern).
+
+Tests: 8 new in `tests/test_pending_change_service.py` (propose-doesn't-
+call-API for both kinds, budget amount validation, bid-target strategy/
+param validation - including the exact silent-no-op-trap case - and both
+apply-dispatch-plus-auto-log paths). 672 passed / 4 skipped overall (up
+from 664). `ruff format` + `pyright` clean. Not yet live-tested against
+the real account (unlike the keyword path) - the `google-ads` MCP
+connection was down for this session, so this was unit-tested only.
+
+**Not yet covered** (still narrower than "any" change):
+- Portfolio `BiddingStrategy` resource updates - deprioritized per the
+  2026-08-27-era TRACKER finding that boo.ua's live campaigns are all
+  standalone-bidding, not portfolio.
+- Negative-keyword-list (shared set) changes, campaign status changes
+  (pause/enable), ad-level edits - anything outside budgets/bids/keywords
+  still goes through the unguarded direct MCP tools, not propose/apply.
+- No magnitude/sanity limits on any proposal (e.g. nothing stops proposing
+  a 10x budget increase) - flagged again below, user asked for limit
+  proposals next.
+
+## ✅ 2026-08-27 (8) — Manual migration done: F-20260827-01/02 written to the live sheet, local JSON deleted
+
+Closes the "Not done yet" item at the end of entry (2) below. Google server
+connection was down for this session, so this went through the underlying
+Python service directly (`FixesLogSheet.append_fix`, same call the MCP
+`log_fix` tool wraps) rather than through the MCP tool — same service
+account, same effect, just called from a throwaway script instead of over
+MCP.
+
+- Verified `snapshots/account_sheets.json` already had the real mapping
+  (`5690318342` → the boo.ua fixes sheet) and the service account key/env
+  var were already in place — nothing left to configure.
+- `list_fixes`-equivalent read confirmed the sheet's "Fixes" tab was empty
+  (0 rows) before writing — the auto-log-on-apply feature (entry (7)) landed
+  after this session's earlier `apply_pending_change` calls today, so
+  nothing had synced automatically yet.
+- Wrote both rows (`F-20260827-01` EXACT-keyword additions,
+  `F-20260827-02` negative-keyword additions to `SNDS / Brand / Ukr /
+  Exact`, `19694406202`) with the full What/Fix/Expected Outcome detail from
+  the old JSON records; read back to confirm both landed correctly with the
+  current English `HEADER`.
+- `snapshots/fixes_log.json` deleted, per entry (2)'s own note that it's
+  safe to remove once migrated — the sheet is now the only place fix
+  records live, for this account and going forward.
+
 ## ✅ 2026-08-27 (7) — Every apply auto-logs to the fixes sheet; Date column format enforced
 
 Two explicit user requests, both implemented and live-verified against the

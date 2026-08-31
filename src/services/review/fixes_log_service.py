@@ -104,16 +104,34 @@ class FixesLogService:
             fix_id: A unique id for this fix (e.g. "F-20260827-01") - needed
                 later to update this same row's review columns
             what: Short label for what changed (the "What" column)
-            fix_text: What was actually done, in enough detail to reproduce
-                or audit it later (the "Fix" column)
+            fix_text: What was actually done (the "Fix" column). **Keep it
+                to 1-2 sentences** - what changed, a count, and the scope
+                (campaign/ad group/list name). No backstory/rationale for
+                why it's notable, no enumerating the individual keywords/
+                negative-words (the live account already has that list -
+                duplicating it here is dead weight; name a specific term
+                only if something was done *to it specifically*, e.g. a bid
+                raised on it), no describing the propose/apply/confirmation
+                process. End with a bare id line and nothing else around it
+                - `change_ids: pc_x, pc_y` for anything made via the
+                pending-change flow (full detail stays recoverable from
+                `snapshots/pending_changes.json`, permanently), or
+                `ids: <shared_set_id>, ...` for direct mutations. Full
+                before/after detail is also recoverable from the Google Ads
+                `change_event` GAQL resource, but only for the last 30 days
+                - so the id line is the durable pointer, not the sheet text
+                itself.
             when: Date the change was made, **format YYYY-MM-DD, e.g.
                 "2026-08-27" - no other format accepted**. Enforced, not
                 just a convention: a later review computes elapsed days by
                 parsing this column, so an ambiguous format would silently
                 break that judgment.
-            expectation: Which metric should move, and in which direction,
-                and why (the "Expected Outcome" column) - this is the
-                hypothesis a later review checks
+            expectation: Which metric should move and in which direction
+                (the "Expected Outcome" column) - this is the hypothesis a
+                later review checks. Same brevity as fix_text: one sentence,
+                metric + direction + a rough check-back window (e.g. "1-2
+                недели"). No restated stats (impressions/clicks/cost/etc.) -
+                those are always re-derivable live via GAQL.
             status: Initial status text (the "Status" column) - matches
                 whatever dropdown values the sheet's Status column already
                 uses; defaults to `DEFAULT_STATUS`
@@ -234,11 +252,19 @@ def create_fixes_log_tools(
                 accounts
             fix_id: A unique id for this fix (e.g. "F-20260827-01")
             what: Short label for what changed
-            fix_text: What was actually done, in enough detail to audit later
+            fix_text: What was actually done - **1-2 sentences only**: what
+                changed, a count, the scope (campaign/ad group/list). No
+                backstory/rationale, no enumerating individual keywords (name
+                one only if something was done specifically to it, e.g. a
+                bid raise), no describing the propose/apply process. End
+                with a bare `change_ids: ...` or `ids: ...` line pointing at
+                the durable detail (pending_changes.json, or the live
+                list/campaign) - that pointer is what makes the brevity safe.
             when: Date the change was made - **must be YYYY-MM-DD**, e.g.
                 "2026-08-27", no other format accepted (a later review
                 parses this to compute elapsed days)
-            expectation: Which metric should move, in which direction, and why
+            expectation: Which metric should move and in which direction -
+                one sentence, no restated stats (those are re-derivable live)
             status: Initial status text (defaults to "Collecting data")
             account_name: The account's descriptive name (e.g. "boo.ua") -
                 only used the very first time this account's sheet is
