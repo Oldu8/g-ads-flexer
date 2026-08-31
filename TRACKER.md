@@ -1,5 +1,45 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-08-27 (10) — Sanity limits on propose_*: advisory, not blocking
+
+User's picks from the limit menu proposed in entry (9)'s "Not yet covered"
+note: budget changes capped at ±50% (no absolute floor/ceiling - explicitly
+declined), keyword proposals capped at 50 per batch (no competitor-brand
+auto-check - explicitly declined, no cooldown/rate limiting - explicitly
+declined), plus a duplicate-keyword check. **Explicit policy for all of
+them**: advisory, never blocking - flag clearly in the preview and in the
+returned dict, let the normal apply/reject decision be what "allows it
+anyway." User rejected adding a second, stricter confirmation step for
+over-limit proposals as redundant friction - the existing propose/apply
+split already *is* the confirmation.
+
+`src/services/review/pending_change_service.py`:
+- `MAX_BUDGET_CHANGE_PCT = 50.0`, `MAX_KEYWORDS_PER_PROPOSAL = 50` - module
+  constants, easy to retune later.
+- `_format_budget_preview` now returns `(preview, exceeds_limit)` - computes
+  % change only when `current_amount_micros` is supplied (can't check
+  against nothing); if omitted, the preview says the limit couldn't be
+  verified rather than silently passing. `propose_update_campaign_budget`
+  surfaces `exceeds_limit` in its returned dict; still creates the pending
+  change either way.
+- `_format_keywords_preview` now returns `(preview, exceeds_limit,
+  has_duplicates)`. New `existing_keywords: Optional[List[str]]` param on
+  `propose_add_keywords` (and its MCP tool) - same "the calling agent
+  already looked this up via search/GAQL, pass it along" pattern as
+  `current_amount_micros`/`current_value` elsewhere in this file, not a
+  live read inside propose. Each proposed keyword whose text
+  case-insensitively matches one in `existing_keywords` gets an inline
+  `[!] DUPLICATE` marker in the preview.
+- Both flags are also included in the `ctx.log` message
+  (`[EXCEEDS LIMIT]`/`[HAS DUPLICATES]` suffixes) so they show up in
+  session logs even if a caller ignores the returned dict fields.
+
+Tests: 7 new (over/under/unknowable-baseline for the budget %, at-the-limit
+boundary and over-limit for keyword count, duplicate flagging and its
+negative case). 679 passed / 4 skipped overall (up from 672). `ruff
+format` + `pyright` clean. Not live-tested against the real account this
+round (`google-ads` MCP connection was down for this session).
+
 ## ✅ 2026-08-27 (9) — propose/apply extended to budgets and bid targets, not just keywords
 
 Closes the last "Not done yet" item several entries below ("only

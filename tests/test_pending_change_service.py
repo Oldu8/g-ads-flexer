@@ -9,6 +9,8 @@ import pytest
 from fastmcp import Context
 
 from src.services.ad_group.ad_group_criterion_service import AdGroupCriterionService
+from src.services.bidding.budget_service import BudgetService
+from src.services.campaign.campaign_service import CampaignService
 from src.services.review.fixes_log_service import FixesLogService
 from src.services.review.pending_change_service import (
     PendingChangeService,
@@ -25,6 +27,20 @@ def mock_ad_group_criterion_service() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_budget_service() -> AsyncMock:
+    """A mocked BudgetService - apply_pending_change should delegate budget
+    changes to this, never build Google Ads protos itself."""
+    return AsyncMock(spec=BudgetService)
+
+
+@pytest.fixture
+def mock_campaign_service() -> AsyncMock:
+    """A mocked CampaignService - apply_pending_change should delegate
+    bid-target changes to this, never build Google Ads protos itself."""
+    return AsyncMock(spec=CampaignService)
+
+
+@pytest.fixture
 def mock_fixes_log_service() -> AsyncMock:
     """A mocked FixesLogService - every successful apply must log to this,
     automatically, without a separate explicit call."""
@@ -35,12 +51,16 @@ def mock_fixes_log_service() -> AsyncMock:
 def pending_change_service(
     tmp_path: Path,
     mock_ad_group_criterion_service: AsyncMock,
+    mock_budget_service: AsyncMock,
+    mock_campaign_service: AsyncMock,
     mock_fixes_log_service: AsyncMock,
 ) -> PendingChangeService:
     store = PendingChangeStore(path=tmp_path / "pending_changes.json")
     return PendingChangeService(
         store=store,
         ad_group_criterion_service=mock_ad_group_criterion_service,
+        budget_service=mock_budget_service,
+        campaign_service=mock_campaign_service,
         fixes_log_service=mock_fixes_log_service,
     )
 
@@ -391,3 +411,324 @@ async def test_tool_wrapper_propose_then_apply_round_trip(
 
     assert applied["status"] == "applied"
     mock_ad_group_criterion_service.add_keywords.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# propose_update_campaign_budget / apply
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_propose_update_campaign_budget_does_not_call_api(
+    pending_change_service: PendingChangeService,
+    mock_budget_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    result = await pending_change_service.propose_update_campaign_budget(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        budget_id="555",
+        new_amount_micros=20_000_000,
+        current_amount_micros=15_000_000,
+    )
+
+    assert result["status"] == "pending"
+    assert "15.00" in result["preview"]
+    assert "20.00" in result["preview"]
+    mock_budget_service.update_campaign_budget.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_propose_update_campaign_budget_rejects_non_positive_amount(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    with pytest.raises(ValueError, match="positive"):
+        await pending_change_service.propose_update_campaign_budget(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            budget_id="555",
+            new_amount_micros=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_update_campaign_budget_calls_budget_service(
+    pending_change_service: PendingChangeService,
+    mock_budget_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    mock_budget_service.update_campaign_budget.return_value = {"results": []}
+
+    proposed = await pending_change_service.propose_update_campaign_budget(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        budget_id="555",
+        new_amount_micros=20_000_000,
+        current_amount_micros=15_000_000,
+        expectation="Volume should rise",
+        account_name="boo.ua",
+    )
+
+    result = await pending_change_service.apply_pending_change(
+        ctx=mock_ctx, change_id=proposed["change_id"]
+    )
+
+    mock_budget_service.update_campaign_budget.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        budget_id="555",
+        amount_micros=20_000_000,
+    )
+    assert result["status"] == "applied"
+    mock_fixes_log_service.log_fix.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        fix_id=proposed["change_id"],
+        what="Updated campaign budget",
+        fix_text=proposed["preview"],
+        when=date.today().isoformat(),
+        expectation="Volume should rise",
+        account_name="boo.ua",
+    )
+
+
+# ---------------------------------------------------------------------------
+# propose_update_campaign_bid_target / apply
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_propose_update_campaign_bid_target_does_not_call_api(
+    pending_change_service: PendingChangeService,
+    mock_campaign_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    result = await pending_change_service.propose_update_campaign_bid_target(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        campaign_id="999",
+        bidding_strategy_type="maximize_conversion_value",
+        max_conversion_value_target_roas=8.5,
+        current_value=7.0,
+    )
+
+    assert result["status"] == "pending"
+    assert "7.0" in result["preview"]
+    assert "8.5" in result["preview"]
+    mock_campaign_service.update_campaign.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_propose_update_campaign_bid_target_unknown_strategy_raises(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    with pytest.raises(ValueError, match="Unsupported bidding_strategy_type"):
+        await pending_change_service.propose_update_campaign_bid_target(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            campaign_id="999",
+            bidding_strategy_type="NOT_A_REAL_STRATEGY",
+            target_roas=5.0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_propose_update_campaign_bid_target_no_target_value_raises(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    with pytest.raises(ValueError, match="At least one of"):
+        await pending_change_service.propose_update_campaign_bid_target(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            campaign_id="999",
+            bidding_strategy_type="TARGET_ROAS",
+        )
+
+
+@pytest.mark.asyncio
+async def test_propose_update_campaign_bid_target_mismatched_param_raises(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    """MAXIMIZE_CONVERSION_VALUE needs max_conversion_value_target_roas,
+    not target_roas - the exact silent-no-op trap the 2026-08-17 fix in
+    campaign_service.py closed; this must reject it up front instead."""
+    with pytest.raises(ValueError, match="expects 'max_conversion_value_target_roas'"):
+        await pending_change_service.propose_update_campaign_bid_target(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            campaign_id="999",
+            bidding_strategy_type="MAXIMIZE_CONVERSION_VALUE",
+            target_roas=5.0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_update_campaign_bid_target_calls_campaign_service(
+    pending_change_service: PendingChangeService,
+    mock_campaign_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    mock_campaign_service.update_campaign.return_value = {"results": []}
+
+    proposed = await pending_change_service.propose_update_campaign_bid_target(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        campaign_id="999",
+        bidding_strategy_type="MAXIMIZE_CONVERSION_VALUE",
+        max_conversion_value_target_roas=8.5,
+        current_value=7.0,
+        expectation="ROAS should hold, volume may drop slightly",
+        account_name="boo.ua",
+    )
+
+    result = await pending_change_service.apply_pending_change(
+        ctx=mock_ctx, change_id=proposed["change_id"]
+    )
+
+    mock_campaign_service.update_campaign.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        campaign_id="999",
+        bidding_strategy_type="MAXIMIZE_CONVERSION_VALUE",
+        target_cpa_micros=None,
+        target_roas=None,
+        max_conversion_value_target_roas=8.5,
+    )
+    assert result["status"] == "applied"
+    mock_fixes_log_service.log_fix.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        fix_id=proposed["change_id"],
+        what="Updated campaign bid target",
+        fix_text=proposed["preview"],
+        when=date.today().isoformat(),
+        expectation="ROAS should hold, volume may drop slightly",
+        account_name="boo.ua",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sanity limits (advisory, not blocking - 2026-08-27)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_propose_update_campaign_budget_flags_over_50_pct_change(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    """A >50% change is still proposed (not rejected) - just flagged."""
+    result = await pending_change_service.propose_update_campaign_budget(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        budget_id="555",
+        new_amount_micros=30_000_000,
+        current_amount_micros=15_000_000,  # +100%
+    )
+
+    assert result["status"] == "pending"
+    assert result["exceeds_limit"] is True
+    assert "EXCEEDS LIMIT" in result["preview"]
+
+
+@pytest.mark.asyncio
+async def test_propose_update_campaign_budget_under_50_pct_not_flagged(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    result = await pending_change_service.propose_update_campaign_budget(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        budget_id="555",
+        new_amount_micros=18_000_000,
+        current_amount_micros=15_000_000,  # +20%
+    )
+
+    assert result["exceeds_limit"] is False
+    assert "EXCEEDS LIMIT" not in result["preview"]
+
+
+@pytest.mark.asyncio
+async def test_propose_update_campaign_budget_no_current_value_not_flagged(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    """Without current_amount_micros there's nothing to compare against -
+    the check silently doesn't run (the preview says why, but it's not an
+    error)."""
+    result = await pending_change_service.propose_update_campaign_budget(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        budget_id="555",
+        new_amount_micros=30_000_000,
+    )
+
+    assert result["exceeds_limit"] is False
+    assert "cannot verify" in result["preview"]
+
+
+@pytest.mark.asyncio
+async def test_propose_add_keywords_flags_over_50_count(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    keywords = [{"text": f"keyword {i}"} for i in range(51)]
+
+    result = await pending_change_service.propose_add_keywords(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        ad_group_id="111222",
+        keywords=keywords,
+    )
+
+    assert result["status"] == "pending"
+    assert result["exceeds_limit"] is True
+    assert "EXCEEDS LIMIT" in result["preview"]
+
+
+@pytest.mark.asyncio
+async def test_propose_add_keywords_50_count_not_flagged(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    """Exactly at the limit (50) should not trip it - only strictly over."""
+    keywords = [{"text": f"keyword {i}"} for i in range(50)]
+
+    result = await pending_change_service.propose_add_keywords(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        ad_group_id="111222",
+        keywords=keywords,
+    )
+
+    assert result["exceeds_limit"] is False
+
+
+@pytest.mark.asyncio
+async def test_propose_add_keywords_flags_duplicates(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    result = await pending_change_service.propose_add_keywords(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        ad_group_id="111222",
+        keywords=[{"text": "Buy Shoes"}, {"text": "cheap sneakers"}],
+        existing_keywords=["buy shoes", "boots"],
+    )
+
+    assert result["has_duplicates"] is True
+    assert "DUPLICATE" in result["preview"]
+    # only the actual duplicate is flagged, not the non-duplicate one
+    assert result["preview"].count("DUPLICATE") == 1
+
+
+@pytest.mark.asyncio
+async def test_propose_add_keywords_no_existing_keywords_not_flagged(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    result = await pending_change_service.propose_add_keywords(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        ad_group_id="111222",
+        keywords=[{"text": "buy shoes"}],
+    )
+
+    assert result["has_duplicates"] is False
+    assert "DUPLICATE" not in result["preview"]

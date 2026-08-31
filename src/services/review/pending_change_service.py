@@ -10,12 +10,31 @@ This wraps existing, already-tested write services (e.g.
 logic - the safety guarantee lives entirely in the propose/apply split, not
 in reimplementing the underlying mutate calls.
 
-Currently supports one `kind`: "add_keywords" (the scenario the user asked
-for first - expanding a brand campaign's keyword list without risking an
-unreviewed competitor-brand term going live). Extending to budget/bid
-changes (the other in-scope "flexer" operations per TRACKER.md) means
-adding another `propose_*` method plus a branch in `apply_pending_change`'s
-dispatch - the store and tool-registration plumbing already support it.
+Supports three `kind`s: "add_keywords" (the scenario the user asked for
+first - expanding a brand campaign's keyword list without risking an
+unreviewed competitor-brand term going live), "update_campaign_budget", and
+"update_campaign_bid_target" (2026-08-27 - the other in-scope "flexer"
+operations per TRACKER.md: budgets and bids). Adding a further `kind` means
+one more `propose_*` method plus one more branch in
+`apply_pending_change`'s dispatch - the store and tool-registration
+plumbing already support it.
+
+**Bid-target propose calls require `bidding_strategy_type`** - same reason
+`campaign_service.update_campaign` itself requires it (see the 2026-08-17
+TRACKER.md fix): passing only e.g. `max_conversion_value_target_roas`
+without restating the campaign's *current* strategy type would silently
+no-op at apply time. This module fails that at propose time instead - no
+point letting a preview through that would do nothing when applied.
+
+**Budget/bid-target previews don't fetch the "before" value themselves** -
+`propose_update_campaign_budget`/`propose_update_campaign_bid_target`
+accept an optional `current_*` param for a nicer before/after preview, but
+never make a read call to fill it in if omitted. Consistent with this
+service being a thin dispatcher, not a second place with its own Google Ads
+read logic: the calling agent, which just decided *why* to propose this
+change, has almost always already looked up the current value via the
+existing search/GAQL tools - pass it along rather than have this service
+re-fetch it.
 
 **Every successful apply is auto-logged to the fixes-log sheet
 (2026-08-27):** unlike the propose->apply split itself, logging a change
@@ -36,24 +55,138 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from fastmcp import Context, FastMCP
 
 from src.services.ad_group.ad_group_criterion_service import AdGroupCriterionService
+from src.services.bidding.budget_service import BudgetService
+from src.services.campaign.campaign_service import CampaignService
 from src.services.review.fixes_log_service import FixesLogService
 from src.services.review.pending_change_store import PendingChangeStore
 from src.utils import get_logger
 
 logger = get_logger(__name__)
 
+# Matches campaign_service.py's _apply_bidding_strategy - kept as a plain
+# set here rather than imported, since that's a private module-level
+# helper, not part of campaign_service's public surface.
+_KNOWN_BIDDING_STRATEGY_TYPES = {
+    "MANUAL_CPC",
+    "TARGET_CPA",
+    "TARGET_ROAS",
+    "MAXIMIZE_CONVERSIONS",
+    "MAXIMIZE_CONVERSION_VALUE",
+    "TARGET_SPEND",
+    "TARGET_IMPRESSION_SHARE",
+    "PORTFOLIO",
+}
+
+# bidding_strategy_type -> which target_* param is meaningful for it. Used
+# only to validate that propose_update_campaign_bid_target got a target
+# value that actually matches the type it's paired with.
+_BID_TARGET_PARAM_BY_TYPE = {
+    "TARGET_CPA": "target_cpa_micros",
+    "MAXIMIZE_CONVERSIONS": "target_cpa_micros",
+    "TARGET_ROAS": "target_roas",
+    "MAXIMIZE_CONVERSION_VALUE": "max_conversion_value_target_roas",
+}
+
+# --- Sanity limits (2026-08-27, user's explicit choices) ---
+# Deliberately advisory, not blocking: a proposal that exceeds one of these
+# still gets created (status "pending") - the preview and the returned dict
+# both flag it clearly, and the user's normal apply-or-reject decision is
+# what "allows it anyway" if that's actually intended. No separate
+# confirmation step beyond the existing propose/apply split - the user was
+# explicit that adding one would be redundant friction, not extra safety.
+MAX_KEYWORDS_PER_PROPOSAL = 50
+MAX_BUDGET_CHANGE_PCT = 50.0
+
 
 def _format_keywords_preview(
-    ad_group_id: str, keywords: List[Dict[str, Any]], negative: bool
-) -> str:
+    ad_group_id: str,
+    keywords: List[Dict[str, Any]],
+    negative: bool,
+    existing_keywords: Optional[List[str]] = None,
+) -> tuple[str, bool, bool]:
+    """Returns (preview_text, exceeds_count_limit, has_duplicates)."""
     label = "NEGATIVE keywords" if negative else "keywords"
+    existing_lower = {t.lower() for t in (existing_keywords or [])}
+
+    exceeds_limit = len(keywords) > MAX_KEYWORDS_PER_PROPOSAL
     lines = [f"Proposed {len(keywords)} {label} for ad group {ad_group_id}:"]
+    if exceeds_limit:
+        lines.insert(
+            0,
+            f"[!] EXCEEDS LIMIT: {len(keywords)} keywords proposed, guideline "
+            f"is {MAX_KEYWORDS_PER_PROPOSAL} per proposal - consider "
+            "splitting into smaller batches for easier review.",
+        )
+
+    has_duplicates = False
     for kw in keywords:
         text = kw.get("text", "?")
         match_type = kw.get("match_type", "BROAD")
         bid = kw.get("cpc_bid_micros")
         bid_note = f", cpc_bid_micros={bid}" if bid is not None else ""
-        lines.append(f'  - "{text}" ({match_type}){bid_note}')
+        dup_note = ""
+        if text.lower() in existing_lower:
+            has_duplicates = True
+            dup_note = "  [!] DUPLICATE - already exists in this ad group"
+        lines.append(f'  - "{text}" ({match_type}){bid_note}{dup_note}')
+
+    return "\n".join(lines), exceeds_limit, has_duplicates
+
+
+def _format_budget_preview(
+    budget_id: str,
+    new_amount_micros: int,
+    current_amount_micros: Optional[int],
+) -> tuple[str, bool]:
+    """Returns (preview_text, exceeds_change_limit)."""
+
+    def _fmt(micros: int) -> str:
+        return f"{micros / 1_000_000:,.2f}"
+
+    lines = [f"Proposed budget change for campaignBudget {budget_id}:"]
+    exceeds_limit = False
+    if current_amount_micros is not None:
+        delta = new_amount_micros - current_amount_micros
+        pct = (delta / current_amount_micros * 100) if current_amount_micros else 0.0
+        exceeds_limit = abs(pct) > MAX_BUDGET_CHANGE_PCT
+        line = (
+            f"  {_fmt(current_amount_micros)} -> {_fmt(new_amount_micros)}"
+            f" ({delta:+,} micros, {pct:+.1f}%)"
+        )
+        if exceeds_limit:
+            lines.insert(
+                0,
+                f"[!] EXCEEDS LIMIT: {pct:+.1f}% change requested, limit is "
+                f"±{MAX_BUDGET_CHANGE_PCT:.0f}% - review carefully "
+                "before approving.",
+            )
+        lines.append(line)
+    else:
+        lines.append(
+            f"  New amount: {_fmt(new_amount_micros)} (current amount not "
+            f"supplied - cannot verify against the ±{MAX_BUDGET_CHANGE_PCT:.0f}% limit)"
+        )
+    return "\n".join(lines), exceeds_limit
+
+
+def _format_bid_target_preview(
+    campaign_id: str,
+    bidding_strategy_type: str,
+    target_param_name: str,
+    new_value: Any,
+    current_value: Optional[Any],
+) -> str:
+    lines = [
+        f"Proposed bid target change for campaign {campaign_id} "
+        f"(strategy: {bidding_strategy_type}):"
+    ]
+    if current_value is not None:
+        lines.append(f"  {target_param_name}: {current_value} -> {new_value}")
+    else:
+        lines.append(
+            f"  {target_param_name}: {new_value} "
+            "(current value not supplied - no before/after delta)"
+        )
     return "\n".join(lines)
 
 
@@ -65,12 +198,16 @@ class PendingChangeService:
         self,
         store: Optional[PendingChangeStore] = None,
         ad_group_criterion_service: Optional[AdGroupCriterionService] = None,
+        budget_service: Optional[BudgetService] = None,
+        campaign_service: Optional[CampaignService] = None,
         fixes_log_service: Optional[FixesLogService] = None,
     ) -> None:
         self.store = store or PendingChangeStore()
         self._ad_group_criterion_service = (
             ad_group_criterion_service or AdGroupCriterionService()
         )
+        self._budget_service = budget_service or BudgetService()
+        self._campaign_service = campaign_service or CampaignService()
         self._fixes_log_service = fixes_log_service or FixesLogService()
 
     async def propose_add_keywords(
@@ -80,6 +217,7 @@ class PendingChangeService:
         ad_group_id: str,
         keywords: List[Dict[str, Any]],
         negative: bool = False,
+        existing_keywords: Optional[List[str]] = None,
         expectation: Optional[str] = None,
         account_name: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -89,6 +227,14 @@ class PendingChangeService:
         persists it. Show the preview to the user and call
         `apply_pending_change` only once they've explicitly approved it.
 
+        Two sanity checks are advisory, not blocking (2026-08-27, user's
+        explicit choice - flag clearly, let the normal apply/reject
+        decision be what "allows it anyway"): proposing more than
+        `MAX_KEYWORDS_PER_PROPOSAL` keywords, and any proposed keyword that
+        already exists in `existing_keywords`. Both are surfaced in the
+        preview text and in this method's returned dict
+        (`exceeds_limit`/`has_duplicates`) - neither raises.
+
         Args:
             ctx: FastMCP context
             customer_id: The customer ID
@@ -96,6 +242,12 @@ class PendingChangeService:
             keywords: List of keyword dicts with 'text', 'match_type', and
                 optional 'cpc_bid_micros'
             negative: Whether these are negative keywords
+            existing_keywords: Keyword texts already present in this ad
+                group (positive or negative) - look them up via the
+                existing search/GAQL tools first and pass them along; used
+                only to flag duplicates in the preview, this method never
+                fetches them itself. Omitting it just means no duplicate
+                check runs, not an error.
             expectation: Which metric should move, and why - carried
                 through to the fixes-log sheet's "Expected Outcome" column
                 when this change is later applied (every apply is
@@ -108,7 +260,8 @@ class PendingChangeService:
                 to omit.
 
         Returns:
-            change_id, status ("pending"), and a human-readable preview
+            change_id, status ("pending"), a human-readable preview, and
+            exceeds_limit/has_duplicates flags
         """
         if not keywords:
             raise ValueError("keywords must be a non-empty list")
@@ -116,7 +269,9 @@ class PendingChangeService:
             if not kw.get("text"):
                 raise ValueError(f"keyword entry missing 'text': {kw}")
 
-        preview = _format_keywords_preview(ad_group_id, keywords, negative)
+        preview, exceeds_limit, has_duplicates = _format_keywords_preview(
+            ad_group_id, keywords, negative, existing_keywords
+        )
         record = self.store.create(
             kind="add_keywords",
             params={
@@ -134,6 +289,207 @@ class PendingChangeService:
             message=(
                 f"Proposed change {record['id']}: {len(keywords)} keyword(s) "
                 f"for ad group {ad_group_id}"
+                + (" [EXCEEDS LIMIT]" if exceeds_limit else "")
+                + (" [HAS DUPLICATES]" if has_duplicates else "")
+            ),
+        )
+        return {
+            "change_id": record["id"],
+            "status": record["status"],
+            "preview": preview,
+            "exceeds_limit": exceeds_limit,
+            "has_duplicates": has_duplicates,
+        }
+
+    async def propose_update_campaign_budget(
+        self,
+        ctx: Context,
+        customer_id: str,
+        budget_id: str,
+        new_amount_micros: int,
+        current_amount_micros: Optional[int] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a campaign budget amount change for review.
+
+        Does not call the Google Ads API - only computes a preview and
+        persists it. Show the preview to the user and call
+        `apply_pending_change` only once they've explicitly approved it.
+
+        The ±`MAX_BUDGET_CHANGE_PCT` sanity check is advisory, not blocking
+        (2026-08-27, user's explicit choice): a change past that limit
+        still gets proposed - it's flagged clearly in the preview and in
+        this method's returned dict (`exceeds_limit`), and the normal
+        apply/reject decision is what "allows it anyway" if that's actually
+        intended. The check only runs at all if `current_amount_micros` is
+        supplied - without it there's nothing to compare against, and the
+        preview says so explicitly rather than silently skipping the
+        caveat.
+
+        Args:
+            ctx: FastMCP context
+            customer_id: The customer ID
+            budget_id: The campaign budget ID to update (not the full
+                resource name - just the numeric id)
+            new_amount_micros: The proposed new daily budget, in micros
+                (1,000,000 micros = 1 unit of the account's currency)
+            current_amount_micros: The budget's current amount, in micros -
+                strongly recommended: without it the preview can't show a
+                before/after delta *or* check the ±50% limit. This method
+                never fetches it itself - look it up via the existing
+                search/GAQL tools first and pass it along.
+            expectation: Which metric should move, and why - carried
+                through to the fixes-log sheet's "Expected Outcome" column
+                when this change is later applied (every apply is
+                auto-logged)
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                carried through to the fixes-log sheet's one-time title
+
+        Returns:
+            change_id, status ("pending"), a human-readable preview, and
+            an exceeds_limit flag
+        """
+        if new_amount_micros <= 0:
+            raise ValueError("new_amount_micros must be a positive integer")
+
+        preview, exceeds_limit = _format_budget_preview(
+            budget_id, new_amount_micros, current_amount_micros
+        )
+        record = self.store.create(
+            kind="update_campaign_budget",
+            params={
+                "customer_id": customer_id,
+                "budget_id": budget_id,
+                "amount_micros": new_amount_micros,
+                "expectation": expectation,
+                "account_name": account_name,
+            },
+            preview=preview,
+        )
+        await ctx.log(
+            level="info",
+            message=(
+                f"Proposed change {record['id']}: budget {budget_id} -> "
+                f"{new_amount_micros} micros"
+                + (" [EXCEEDS LIMIT]" if exceeds_limit else "")
+            ),
+        )
+        return {
+            "change_id": record["id"],
+            "status": record["status"],
+            "preview": preview,
+            "exceeds_limit": exceeds_limit,
+        }
+
+    async def propose_update_campaign_bid_target(
+        self,
+        ctx: Context,
+        customer_id: str,
+        campaign_id: str,
+        bidding_strategy_type: str,
+        target_cpa_micros: Optional[int] = None,
+        target_roas: Optional[float] = None,
+        max_conversion_value_target_roas: Optional[float] = None,
+        current_value: Optional[Any] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a campaign bid-target change (e.g. Target ROAS, Target CPA)
+        for review.
+
+        `bidding_strategy_type` must match the campaign's *current*
+        strategy - restate it even if you're only nudging its target value,
+        not switching strategies (same rule `campaign_service.update_campaign`
+        itself enforces, see the 2026-08-17 TRACKER.md fix). This method
+        validates that up front, at propose time, rather than letting a
+        preview through that would silently no-op when applied.
+
+        Does not call the Google Ads API - only computes a preview and
+        persists it. Show the preview to the user and call
+        `apply_pending_change` only once they've explicitly approved it.
+
+        Args:
+            ctx: FastMCP context
+            customer_id: The customer ID
+            campaign_id: The campaign ID to update
+            bidding_strategy_type: The campaign's *current* bidding
+                strategy - one of MANUAL_CPC, TARGET_CPA, TARGET_ROAS,
+                MAXIMIZE_CONVERSIONS, MAXIMIZE_CONVERSION_VALUE,
+                TARGET_SPEND, TARGET_IMPRESSION_SHARE, PORTFOLIO
+            target_cpa_micros: New target CPA in micros - for TARGET_CPA or
+                MAXIMIZE_CONVERSIONS
+            target_roas: New target ROAS - for TARGET_ROAS
+            max_conversion_value_target_roas: New target ROAS - for
+                MAXIMIZE_CONVERSION_VALUE
+            current_value: The current target value (whichever of the
+                above is relevant) - optional, but strongly recommended:
+                without it the preview can't show a before/after delta.
+                This method never fetches it itself - look it up via the
+                existing search/GAQL tools first and pass it along.
+            expectation: Which metric should move, and why - carried
+                through to the fixes-log sheet's "Expected Outcome" column
+                when this change is later applied (every apply is
+                auto-logged)
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                carried through to the fixes-log sheet's one-time title
+
+        Returns:
+            change_id, status ("pending"), and a human-readable preview
+        """
+        bst = bidding_strategy_type.upper()
+        if bst not in _KNOWN_BIDDING_STRATEGY_TYPES:
+            raise ValueError(
+                f"Unsupported bidding_strategy_type: {bidding_strategy_type!r}, "
+                f"expected one of {sorted(_KNOWN_BIDDING_STRATEGY_TYPES)}"
+            )
+
+        provided = {
+            "target_cpa_micros": target_cpa_micros,
+            "target_roas": target_roas,
+            "max_conversion_value_target_roas": max_conversion_value_target_roas,
+        }
+        set_params = [name for name, value in provided.items() if value is not None]
+        if not set_params:
+            raise ValueError(
+                "At least one of target_cpa_micros, target_roas, or "
+                "max_conversion_value_target_roas must be provided - "
+                "otherwise there's nothing to change."
+            )
+
+        expected_param = _BID_TARGET_PARAM_BY_TYPE.get(bst)
+        if expected_param is not None and expected_param not in set_params:
+            raise ValueError(
+                f"bidding_strategy_type={bst!r} expects '{expected_param}' to "
+                f"be set, got {set_params} instead - these must match the "
+                "campaign's actual strategy type."
+            )
+
+        target_param_name = set_params[0]
+        new_value = provided[target_param_name]
+
+        preview = _format_bid_target_preview(
+            campaign_id, bst, target_param_name, new_value, current_value
+        )
+        record = self.store.create(
+            kind="update_campaign_bid_target",
+            params={
+                "customer_id": customer_id,
+                "campaign_id": campaign_id,
+                "bidding_strategy_type": bst,
+                "target_cpa_micros": target_cpa_micros,
+                "target_roas": target_roas,
+                "max_conversion_value_target_roas": max_conversion_value_target_roas,
+                "expectation": expectation,
+                "account_name": account_name,
+            },
+            preview=preview,
+        )
+        await ctx.log(
+            level="info",
+            message=(
+                f"Proposed change {record['id']}: campaign {campaign_id} "
+                f"{target_param_name} -> {new_value}"
             ),
         )
         return {
@@ -213,6 +569,27 @@ class PendingChangeService:
                 if params.get("negative")
                 else "Added keywords"
             )
+        elif kind == "update_campaign_budget":
+            result = await self._budget_service.update_campaign_budget(
+                ctx=ctx,
+                customer_id=params["customer_id"],
+                budget_id=params["budget_id"],
+                amount_micros=params["amount_micros"],
+            )
+            what_label = "Updated campaign budget"
+        elif kind == "update_campaign_bid_target":
+            result = await self._campaign_service.update_campaign(
+                ctx=ctx,
+                customer_id=params["customer_id"],
+                campaign_id=params["campaign_id"],
+                bidding_strategy_type=params["bidding_strategy_type"],
+                target_cpa_micros=params.get("target_cpa_micros"),
+                target_roas=params.get("target_roas"),
+                max_conversion_value_target_roas=params.get(
+                    "max_conversion_value_target_roas"
+                ),
+            )
+            what_label = "Updated campaign bid target"
         else:
             raise Exception(f"Unknown pending-change kind: {kind}")
 
@@ -290,6 +667,7 @@ def create_pending_change_tools(
         ad_group_id: str,
         keywords: List[Dict[str, Any]],
         negative: bool = False,
+        existing_keywords: Optional[List[str]] = None,
         expectation: Optional[str] = None,
         account_name: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -297,6 +675,12 @@ def create_pending_change_tools(
         they reach the live account. Does NOT call the Google Ads API -
         show the returned preview to the user and only call
         apply_pending_change once they've explicitly approved it.
+
+        Two sanity checks are advisory, not blocking: proposing more than
+        50 keywords at once, and any keyword already present in
+        existing_keywords. Both are flagged in the preview and in this
+        tool's returned exceeds_limit/has_duplicates - neither one refuses
+        the proposal, the user's normal approve/reject call is what decides.
 
         Args:
             customer_id: The customer ID
@@ -306,6 +690,123 @@ def create_pending_change_tools(
                 - match_type: EXACT, PHRASE, or BROAD (default: BROAD)
                 - cpc_bid_micros: Optional CPC bid override
             negative: Whether these are negative keywords
+            existing_keywords: Keyword texts already present in this ad
+                group (look them up via the existing search/GAQL tools
+                first) - used only to flag duplicates in the preview,
+                never fetched by this tool itself
+            expectation: Which metric should move, and why - every applied
+                change is auto-logged to the fixes-log sheet, and this
+                becomes its "Expected Outcome" - set it, a blank hypothesis
+                makes a later review meaningless
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                used for the fixes-log sheet's one-time title if it hasn't
+                been initialized yet; harmless to omit
+
+        Returns:
+            change_id, status ("pending"), preview, exceeds_limit, and
+            has_duplicates
+        """
+        return await service.propose_add_keywords(
+            ctx=ctx,
+            customer_id=customer_id,
+            ad_group_id=ad_group_id,
+            keywords=keywords,
+            negative=negative,
+            existing_keywords=existing_keywords,
+            expectation=expectation,
+            account_name=account_name,
+        )
+
+    async def propose_update_campaign_budget(
+        ctx: Context,
+        customer_id: str,
+        budget_id: str,
+        new_amount_micros: int,
+        current_amount_micros: Optional[int] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a campaign budget amount change for human review before it
+        reaches the live account. Does NOT call the Google Ads API - show
+        the returned preview to the user and only call apply_pending_change
+        once they've explicitly approved it.
+
+        The ±50% change sanity check is advisory, not blocking: a bigger
+        change still gets proposed, flagged in the preview and in this
+        tool's returned exceeds_limit - the user's normal approve/reject
+        call is what decides, not a refusal here. The check only runs if
+        current_amount_micros is supplied.
+
+        Args:
+            customer_id: The customer ID
+            budget_id: The campaign budget ID to update (numeric id, not
+                the full resource name)
+            new_amount_micros: The proposed new daily budget, in micros
+            current_amount_micros: The budget's current amount, in micros -
+                look it up via the existing search/GAQL tools first and
+                pass it along; without it the preview has no before/after
+                delta *and* the ±50% limit can't be checked
+            expectation: Which metric should move, and why - every applied
+                change is auto-logged to the fixes-log sheet, and this
+                becomes its "Expected Outcome" - set it, a blank hypothesis
+                makes a later review meaningless
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                used for the fixes-log sheet's one-time title if it hasn't
+                been initialized yet; harmless to omit
+
+        Returns:
+            change_id, status ("pending"), preview, and an exceeds_limit flag
+        """
+        return await service.propose_update_campaign_budget(
+            ctx=ctx,
+            customer_id=customer_id,
+            budget_id=budget_id,
+            new_amount_micros=new_amount_micros,
+            current_amount_micros=current_amount_micros,
+            expectation=expectation,
+            account_name=account_name,
+        )
+
+    async def propose_update_campaign_bid_target(
+        ctx: Context,
+        customer_id: str,
+        campaign_id: str,
+        bidding_strategy_type: str,
+        target_cpa_micros: Optional[int] = None,
+        target_roas: Optional[float] = None,
+        max_conversion_value_target_roas: Optional[float] = None,
+        current_value: Optional[Any] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a campaign bid-target change (Target ROAS, Target CPA,
+        etc.) for human review before it reaches the live account. Does
+        NOT call the Google Ads API - show the returned preview to the
+        user and only call apply_pending_change once they've explicitly
+        approved it.
+
+        `bidding_strategy_type` must be the campaign's *current* strategy -
+        restate it even if you're only nudging its target, not switching
+        strategies. Passing a target value without it, or one that doesn't
+        match the type (e.g. target_roas with MAXIMIZE_CONVERSION_VALUE
+        instead of max_conversion_value_target_roas), is rejected here at
+        propose time rather than silently no-op'ing at apply time.
+
+        Args:
+            customer_id: The customer ID
+            campaign_id: The campaign ID to update
+            bidding_strategy_type: The campaign's current bidding strategy -
+                one of MANUAL_CPC, TARGET_CPA, TARGET_ROAS,
+                MAXIMIZE_CONVERSIONS, MAXIMIZE_CONVERSION_VALUE,
+                TARGET_SPEND, TARGET_IMPRESSION_SHARE, PORTFOLIO
+            target_cpa_micros: New target CPA in micros (for TARGET_CPA or
+                MAXIMIZE_CONVERSIONS)
+            target_roas: New target ROAS (for TARGET_ROAS)
+            max_conversion_value_target_roas: New target ROAS (for
+                MAXIMIZE_CONVERSION_VALUE)
+            current_value: The current target value - look it up via the
+                existing search/GAQL tools first and pass it along;
+                without it the preview has no before/after delta
             expectation: Which metric should move, and why - every applied
                 change is auto-logged to the fixes-log sheet, and this
                 becomes its "Expected Outcome" - set it, a blank hypothesis
@@ -317,12 +818,15 @@ def create_pending_change_tools(
         Returns:
             change_id, status ("pending"), and a human-readable preview
         """
-        return await service.propose_add_keywords(
+        return await service.propose_update_campaign_bid_target(
             ctx=ctx,
             customer_id=customer_id,
-            ad_group_id=ad_group_id,
-            keywords=keywords,
-            negative=negative,
+            campaign_id=campaign_id,
+            bidding_strategy_type=bidding_strategy_type,
+            target_cpa_micros=target_cpa_micros,
+            target_roas=target_roas,
+            max_conversion_value_target_roas=max_conversion_value_target_roas,
+            current_value=current_value,
             expectation=expectation,
             account_name=account_name,
         )
@@ -378,6 +882,8 @@ def create_pending_change_tools(
     tools.extend(
         [
             propose_add_keywords,
+            propose_update_campaign_budget,
+            propose_update_campaign_bid_target,
             list_pending_changes,
             get_pending_change,
             apply_pending_change,
