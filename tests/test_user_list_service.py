@@ -14,6 +14,12 @@ from google.ads.googleads.v25.enums.types.user_list_logical_rule_operator import
 from google.ads.googleads.v25.enums.types.user_list_membership_status import (
     UserListMembershipStatusEnum,
 )
+from google.ads.googleads.v25.enums.types.user_list_prepopulation_status import (
+    UserListPrepopulationStatusEnum,
+)
+from google.ads.googleads.v25.enums.types.user_list_string_rule_item_operator import (
+    UserListStringRuleItemOperatorEnum,
+)
 from google.ads.googleads.v25.services.services.user_list_service import (
     UserListServiceClient,
 )
@@ -487,6 +493,164 @@ async def test_update_user_list_partial(
 
 
 @pytest.mark.asyncio
+async def test_create_rule_based_user_list(
+    user_list_service: UserListService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Test creating a rule-based (URL-contains) remarketing user list -
+    the "category page visitors" use case (e.g. gold-catalog pages)."""
+    customer_id = "1234567890"
+    name = "Gold catalog visitors - 30 days"
+    patterns = ["/zoloti-godynnyky/", "/zoloti-lancyuzhky/", "/zoloti-serezhky/"]
+
+    mock_response = Mock(spec=MutateUserListsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[0].resource_name = f"customers/{customer_id}/userLists/999"
+
+    mock_user_list_client = user_list_service.client  # type: ignore
+    mock_user_list_client.mutate_user_lists.return_value = mock_response  # type: ignore
+
+    expected_result = {
+        "results": [{"resource_name": f"customers/{customer_id}/userLists/999"}]
+    }
+    with patch(
+        "src.services.audiences.user_list_service.serialize_proto_message",
+        return_value=expected_result,
+    ):
+        result = await user_list_service.create_rule_based_user_list(
+            ctx=mock_ctx,
+            customer_id=customer_id,
+            name=name,
+            url_contains_patterns=patterns,
+            lookback_window_days=30,
+        )
+
+    assert result == expected_result
+    request = mock_user_list_client.mutate_user_lists.call_args[1]["request"]  # type: ignore
+    created = request.operations[0].create
+
+    assert created.name == name
+    # membership_life_span is deliberately never set for rule-based lists -
+    # Google Ads documents it as ignored for this type (confirmed live: it
+    # read back as 0 regardless of what was sent). lookback_window_days
+    # per-operand is the field that actually governs the day-window.
+    assert created.membership_life_span == 0
+
+    rule_list = created.rule_based_user_list
+    assert (
+        rule_list.prepopulation_status
+        == UserListPrepopulationStatusEnum.UserListPrepopulationStatus.REQUESTED
+    )
+    # One FlexibleRuleOperandInfo per pattern (not multiple rule_item_groups
+    # inside one operand - that shape hits a live API TOO_MANY validation
+    # past ~2 groups, confirmed empirically; see the method docstring).
+    operands = rule_list.flexible_rule_user_list.inclusive_operands
+    assert len(operands) == len(patterns)
+    for operand, pattern in zip(operands, patterns):
+        assert operand.lookback_window_days == 30
+        groups = operand.rule.rule_item_groups
+        assert len(groups) == 1
+        rule_item = groups[0].rule_items[0]
+        assert rule_item.name == "url__"
+        assert (
+            rule_item.string_rule_item.operator
+            == UserListStringRuleItemOperatorEnum.UserListStringRuleItemOperator.CONTAINS
+        )
+        assert rule_item.string_rule_item.value == pattern
+
+
+@pytest.mark.asyncio
+async def test_create_rule_based_user_list_no_prepopulate(
+    user_list_service: UserListService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """prepopulate=False should leave prepopulation_status unset (default
+    NONE), not force it to REQUESTED."""
+    mock_response = Mock(spec=MutateUserListsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[0].resource_name = "customers/1234567890/userLists/999"
+    mock_user_list_client = user_list_service.client  # type: ignore
+    mock_user_list_client.mutate_user_lists.return_value = mock_response  # type: ignore
+
+    with patch(
+        "src.services.audiences.user_list_service.serialize_proto_message",
+        return_value={},
+    ):
+        await user_list_service.create_rule_based_user_list(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            name="No prepopulate",
+            url_contains_patterns=["/zoloti-serhy/"],
+            prepopulate=False,
+        )
+
+    request = mock_user_list_client.mutate_user_lists.call_args[1]["request"]  # type: ignore
+    created = request.operations[0].create
+    assert (
+        created.rule_based_user_list.prepopulation_status
+        == UserListPrepopulationStatusEnum.UserListPrepopulationStatus.UNSPECIFIED
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_rule_based_user_list_empty_patterns_raises(
+    user_list_service: UserListService,
+    mock_ctx: Context,
+) -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        await user_list_service.create_rule_based_user_list(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            name="Empty",
+            url_contains_patterns=[],
+        )
+
+
+@pytest.mark.asyncio
+async def test_remove_user_list(
+    user_list_service: UserListService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    customer_id = "1234567890"
+    user_list_id = "746722256"
+
+    mock_response = Mock(spec=MutateUserListsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[
+        0
+    ].resource_name = f"customers/{customer_id}/userLists/{user_list_id}"
+    mock_user_list_client = user_list_service.client  # type: ignore
+    mock_user_list_client.mutate_user_lists.return_value = mock_response  # type: ignore
+
+    expected_result = {
+        "results": [
+            {"resource_name": f"customers/{customer_id}/userLists/{user_list_id}"}
+        ]
+    }
+    with patch(
+        "src.services.audiences.user_list_service.serialize_proto_message",
+        return_value=expected_result,
+    ):
+        result = await user_list_service.remove_user_list(
+            ctx=mock_ctx,
+            customer_id=customer_id,
+            user_list_id=user_list_id,
+        )
+
+    assert result == expected_result
+    request = mock_user_list_client.mutate_user_lists.call_args[1]["request"]  # type: ignore
+    assert request.operations[0].remove == (
+        f"customers/{customer_id}/userLists/{user_list_id}"
+    )
+    mock_ctx.log.assert_called_once_with(  # type: ignore
+        level="info", message=f"Removed user list {user_list_id}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_error_handling(
     user_list_service: UserListService,
     mock_sdk_client: Any,
@@ -531,7 +695,7 @@ def test_register_user_list_tools() -> None:
     assert isinstance(service, UserListService)
 
     # Verify that tools were registered
-    assert mock_mcp.tool.call_count == 5  # 5 tools registered  # type: ignore
+    assert mock_mcp.tool.call_count == 7  # 7 tools registered  # type: ignore
 
     # Verify tool functions were passed
     registered_tools = [call[0][0] for call in mock_mcp.tool.call_args_list]  # type: ignore
@@ -542,7 +706,9 @@ def test_register_user_list_tools() -> None:
         "create_crm_based_user_list",
         "create_similar_user_list",
         "create_logical_user_list",
+        "create_rule_based_user_list",
         "update_user_list",
+        "remove_user_list",
     ]
 
     assert set(tool_names) == set(expected_tools)

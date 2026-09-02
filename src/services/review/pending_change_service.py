@@ -10,14 +10,19 @@ This wraps existing, already-tested write services (e.g.
 logic - the safety guarantee lives entirely in the propose/apply split, not
 in reimplementing the underlying mutate calls.
 
-Supports three `kind`s: "add_keywords" (the scenario the user asked for
+Supports five `kind`s: "add_keywords" (the scenario the user asked for
 first - expanding a brand campaign's keyword list without risking an
-unreviewed competitor-brand term going live), "update_campaign_budget", and
+unreviewed competitor-brand term going live), "update_campaign_budget" and
 "update_campaign_bid_target" (2026-08-27 - the other in-scope "flexer"
-operations per TRACKER.md: budgets and bids). Adding a further `kind` means
-one more `propose_*` method plus one more branch in
-`apply_pending_change`'s dispatch - the store and tool-registration
-plumbing already support it.
+operations per TRACKER.md: budgets and bids), and
+"create_rule_based_user_list"/"remove_user_list" (2026-09-02 - audience
+creation/cleanup; added specifically because a prior session did this kind
+of live account change via ad-hoc scratch scripts instead of through this
+review system, which the user correctly called out - every write operation
+needs an explicit propose/apply step, no exceptions for "it's just an
+audience"). Adding a further `kind` means one more `propose_*` method plus
+one more branch in `apply_pending_change`'s dispatch - the store and
+tool-registration plumbing already support it.
 
 **Bid-target propose calls require `bidding_strategy_type`** - same reason
 `campaign_service.update_campaign` itself requires it (see the 2026-08-17
@@ -55,6 +60,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from fastmcp import Context, FastMCP
 
 from src.services.ad_group.ad_group_criterion_service import AdGroupCriterionService
+from src.services.audiences.user_list_service import UserListService
 from src.services.bidding.budget_service import BudgetService
 from src.services.campaign.campaign_service import CampaignService
 from src.services.review.fixes_log_service import FixesLogService
@@ -190,6 +196,25 @@ def _format_bid_target_preview(
     return "\n".join(lines)
 
 
+def _format_rule_based_user_list_preview(
+    name: str, url_contains_patterns: List[str], lookback_window_days: int
+) -> str:
+    lines = [
+        f'Proposed rule-based user list "{name}" '
+        f"({lookback_window_days}-day lookback), matching ANY of:"
+    ]
+    for pattern in url_contains_patterns:
+        lines.append(f'  - url contains "{pattern}"')
+    return "\n".join(lines)
+
+
+def _format_remove_user_list_preview(
+    user_list_id: str, user_list_name: Optional[str]
+) -> str:
+    label = f'"{user_list_name}" ({user_list_id})' if user_list_name else user_list_id
+    return f"Proposed removal of user list {label}."
+
+
 class PendingChangeService:
     """Review workflow for write operations that must not execute on the
     first call - see module docstring."""
@@ -200,6 +225,7 @@ class PendingChangeService:
         ad_group_criterion_service: Optional[AdGroupCriterionService] = None,
         budget_service: Optional[BudgetService] = None,
         campaign_service: Optional[CampaignService] = None,
+        user_list_service: Optional[UserListService] = None,
         fixes_log_service: Optional[FixesLogService] = None,
     ) -> None:
         self.store = store or PendingChangeStore()
@@ -208,6 +234,7 @@ class PendingChangeService:
         )
         self._budget_service = budget_service or BudgetService()
         self._campaign_service = campaign_service or CampaignService()
+        self._user_list_service = user_list_service or UserListService()
         self._fixes_log_service = fixes_log_service or FixesLogService()
 
     async def propose_add_keywords(
@@ -498,6 +525,137 @@ class PendingChangeService:
             "preview": preview,
         }
 
+    async def propose_create_rule_based_user_list(
+        self,
+        ctx: Context,
+        customer_id: str,
+        name: str,
+        url_contains_patterns: List[str],
+        lookback_window_days: int = 30,
+        description: Optional[str] = None,
+        membership_status: str = "OPEN",
+        prepopulate: bool = True,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a rule-based (URL-contains) remarketing user list for
+        review - e.g. a "category page visitors" audience.
+
+        Does not call the Google Ads API - only computes a preview and
+        persists it. Show the preview to the user and call
+        `apply_pending_change` only once they've explicitly approved it.
+
+        Args:
+            ctx: FastMCP context
+            customer_id: The customer ID
+            name: User list name
+            url_contains_patterns: Page qualifies if its URL contains ANY
+                of these strings (e.g. "/zoloti-godynnyky/")
+            lookback_window_days: How far back to look for a qualifying
+                visit, in days - the "7/14/30/90-day" knob for this list
+                type (NOT membership_life_span - see
+                `UserListService.create_rule_based_user_list`'s docstring
+                for why)
+            description: Optional description
+            membership_status: OPEN or CLOSED
+            prepopulate: If True, requests backfilling from existing site
+                visitors (Display Network only, last 30 days)
+            expectation: Which metric should move, and why - carried
+                through to the fixes-log sheet's "Expected Outcome" column
+                when this change is later applied
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                carried through to the fixes-log sheet's one-time title
+
+        Returns:
+            change_id, status ("pending"), and a human-readable preview
+        """
+        if not url_contains_patterns:
+            raise ValueError("url_contains_patterns must be a non-empty list")
+
+        preview = _format_rule_based_user_list_preview(
+            name, url_contains_patterns, lookback_window_days
+        )
+        record = self.store.create(
+            kind="create_rule_based_user_list",
+            params={
+                "customer_id": customer_id,
+                "name": name,
+                "url_contains_patterns": url_contains_patterns,
+                "lookback_window_days": lookback_window_days,
+                "description": description,
+                "membership_status": membership_status,
+                "prepopulate": prepopulate,
+                "expectation": expectation,
+                "account_name": account_name,
+            },
+            preview=preview,
+        )
+        await ctx.log(
+            level="info",
+            message=(
+                f"Proposed change {record['id']}: rule-based user list "
+                f"'{name}' ({len(url_contains_patterns)} pattern(s))"
+            ),
+        )
+        return {
+            "change_id": record["id"],
+            "status": record["status"],
+            "preview": preview,
+        }
+
+    async def propose_remove_user_list(
+        self,
+        ctx: Context,
+        customer_id: str,
+        user_list_id: str,
+        user_list_name: Optional[str] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a user list removal for review.
+
+        Does not call the Google Ads API - only persists a preview. Show
+        the preview to the user and call `apply_pending_change` only once
+        they've explicitly approved it.
+
+        Args:
+            ctx: FastMCP context
+            customer_id: The customer ID
+            user_list_id: The user list ID to remove
+            user_list_name: The list's current name - look it up via the
+                existing search/GAQL tools first and pass it along, purely
+                to make the preview readable; this method never fetches it
+                itself
+            expectation: Why this is being removed / what should follow -
+                carried through to the fixes-log sheet's "Expected
+                Outcome" column when this change is later applied
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                carried through to the fixes-log sheet's one-time title
+
+        Returns:
+            change_id, status ("pending"), and a human-readable preview
+        """
+        preview = _format_remove_user_list_preview(user_list_id, user_list_name)
+        record = self.store.create(
+            kind="remove_user_list",
+            params={
+                "customer_id": customer_id,
+                "user_list_id": user_list_id,
+                "expectation": expectation,
+                "account_name": account_name,
+            },
+            preview=preview,
+        )
+        await ctx.log(
+            level="info",
+            message=f"Proposed change {record['id']}: remove user list {user_list_id}",
+        )
+        return {
+            "change_id": record["id"],
+            "status": record["status"],
+            "preview": preview,
+        }
+
     async def list_pending_changes(
         self, ctx: Context, status: Optional[str] = "pending"
     ) -> List[Dict[str, Any]]:
@@ -590,6 +748,25 @@ class PendingChangeService:
                 ),
             )
             what_label = "Updated campaign bid target"
+        elif kind == "create_rule_based_user_list":
+            result = await self._user_list_service.create_rule_based_user_list(
+                ctx=ctx,
+                customer_id=params["customer_id"],
+                name=params["name"],
+                url_contains_patterns=params["url_contains_patterns"],
+                lookback_window_days=params.get("lookback_window_days", 30),
+                description=params.get("description"),
+                membership_status=params.get("membership_status", "OPEN"),
+                prepopulate=params.get("prepopulate", True),
+            )
+            what_label = "Created rule-based user list"
+        elif kind == "remove_user_list":
+            result = await self._user_list_service.remove_user_list(
+                ctx=ctx,
+                customer_id=params["customer_id"],
+                user_list_id=params["user_list_id"],
+            )
+            what_label = "Removed user list"
         else:
             raise Exception(f"Unknown pending-change kind: {kind}")
 
@@ -831,6 +1008,92 @@ def create_pending_change_tools(
             account_name=account_name,
         )
 
+    async def propose_create_rule_based_user_list(
+        ctx: Context,
+        customer_id: str,
+        name: str,
+        url_contains_patterns: List[str],
+        lookback_window_days: int = 30,
+        description: Optional[str] = None,
+        membership_status: str = "OPEN",
+        prepopulate: bool = True,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a rule-based (URL-contains) remarketing user list for
+        human review before it reaches the live account - e.g. a
+        "category page visitors" audience. Does NOT call the Google Ads
+        API - show the returned preview to the user and only call
+        apply_pending_change once they've explicitly approved it.
+
+        Args:
+            customer_id: The customer ID
+            name: User list name
+            url_contains_patterns: Page qualifies if its URL contains ANY
+                of these strings (e.g. "/zoloti-godynnyky/")
+            lookback_window_days: How far back to look for a qualifying
+                visit, in days - the "7/14/30/90-day" knob for this list
+                type
+            description: Optional description
+            membership_status: OPEN or CLOSED
+            prepopulate: If True, requests backfilling from existing site
+                visitors (Display Network only, last 30 days)
+            expectation: Which metric should move, and why - every applied
+                change is auto-logged to the fixes-log sheet, and this
+                becomes its "Expected Outcome"
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                used for the fixes-log sheet's one-time title if it hasn't
+                been initialized yet
+
+        Returns:
+            change_id, status ("pending"), and a human-readable preview
+        """
+        return await service.propose_create_rule_based_user_list(
+            ctx=ctx,
+            customer_id=customer_id,
+            name=name,
+            url_contains_patterns=url_contains_patterns,
+            lookback_window_days=lookback_window_days,
+            description=description,
+            membership_status=membership_status,
+            prepopulate=prepopulate,
+            expectation=expectation,
+            account_name=account_name,
+        )
+
+    async def propose_remove_user_list(
+        ctx: Context,
+        customer_id: str,
+        user_list_id: str,
+        user_list_name: Optional[str] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a user list removal for human review before it reaches
+        the live account. Does NOT call the Google Ads API - show the
+        returned preview to the user and only call apply_pending_change
+        once they've explicitly approved it.
+
+        Args:
+            customer_id: The customer ID
+            user_list_id: The user list ID to remove
+            user_list_name: The list's current name, for a readable
+                preview - look it up first, this tool doesn't fetch it
+            expectation: Why this is being removed / what should follow
+            account_name: The account's descriptive name (e.g. "boo.ua")
+
+        Returns:
+            change_id, status ("pending"), and a human-readable preview
+        """
+        return await service.propose_remove_user_list(
+            ctx=ctx,
+            customer_id=customer_id,
+            user_list_id=user_list_id,
+            user_list_name=user_list_name,
+            expectation=expectation,
+            account_name=account_name,
+        )
+
     async def list_pending_changes(
         ctx: Context, status: Optional[str] = "pending"
     ) -> List[Dict[str, Any]]:
@@ -884,6 +1147,8 @@ def create_pending_change_tools(
             propose_add_keywords,
             propose_update_campaign_budget,
             propose_update_campaign_bid_target,
+            propose_create_rule_based_user_list,
+            propose_remove_user_list,
             list_pending_changes,
             get_pending_change,
             apply_pending_change,

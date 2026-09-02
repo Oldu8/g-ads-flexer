@@ -7,16 +7,35 @@ from google.ads.googleads.errors import GoogleAdsException
 from google.ads.googleads.v25.common.types.user_lists import (
     BasicUserListInfo,
     CrmBasedUserListInfo,
+    FlexibleRuleOperandInfo,
+    FlexibleRuleUserListInfo,
     LogicalUserListInfo,
     LogicalUserListOperandInfo,
+    RuleBasedUserListInfo,
     SimilarUserListInfo,
     UserListLogicalRuleInfo,
+    UserListRuleInfo,
+    UserListRuleItemGroupInfo,
+    UserListRuleItemInfo,
+    UserListStringRuleItemInfo,
+)
+from google.ads.googleads.v25.enums.types.user_list_flexible_rule_operator import (
+    UserListFlexibleRuleOperatorEnum,
 )
 from google.ads.googleads.v25.enums.types.user_list_logical_rule_operator import (
     UserListLogicalRuleOperatorEnum,
 )
 from google.ads.googleads.v25.enums.types.user_list_membership_status import (
     UserListMembershipStatusEnum,
+)
+from google.ads.googleads.v25.enums.types.user_list_prepopulation_status import (
+    UserListPrepopulationStatusEnum,
+)
+from google.ads.googleads.v25.enums.types.user_list_rule_type import (
+    UserListRuleTypeEnum,
+)
+from google.ads.googleads.v25.enums.types.user_list_string_rule_item_operator import (
+    UserListStringRuleItemOperatorEnum,
 )
 from google.ads.googleads.v25.resources.types.user_list import UserList
 from google.ads.googleads.v25.services.services.user_list_service import (
@@ -383,6 +402,155 @@ class UserListService:
             await ctx.log(level="error", message=error_msg)
             raise Exception(error_msg) from e
 
+    async def create_rule_based_user_list(
+        self,
+        ctx: Context,
+        customer_id: str,
+        name: str,
+        url_contains_patterns: List[str],
+        lookback_window_days: int = 30,
+        description: Optional[str] = None,
+        membership_status: str = "OPEN",
+        prepopulate: bool = True,
+    ) -> Dict[str, Any]:
+        """Create a rule-based remarketing user list: visitors of any page
+        whose URL contains one of the given patterns (e.g. path segments
+        like "/zoloti-godynnyky/").
+
+        Builds a `FlexibleRuleUserListInfo` with **one `FlexibleRuleOperandInfo`
+        per pattern** (each wrapping a single-group, single-item `url__`
+        CONTAINS rule), combined via `inclusive_rule_operator=OR` - so
+        membership is "matched ANY of these URL patterns", not all of them.
+        This is not the only structurally-valid way to express "OR of several
+        URL checks" - an earlier version of this method instead put multiple
+        `rule_item_groups` inside *one* operand's rule, which is a valid
+        message shape but hits a live `TOO_MANY` (collection_size_error) API
+        validation past roughly 2 groups in one operand - confirmed empirically
+        against the real API (2026-08-27), not documented anywhere obvious.
+        The per-pattern-operand structure was verified to accept at least 9
+        patterns in one request; there's presumably still a cap on
+        `inclusive_operands` count too, just higher.
+
+        **`lookback_window_days`, not `membership_life_span`, is what
+        actually controls "7/14/30/90-day" duration for a rule-based list**
+        (also confirmed empirically 2026-08-27, after creating 4 lists with
+        `membership_life_span` set and discovering it silently read back as
+        0): the `UserList.membership_life_span` field is explicitly
+        documented as **ignored for `rule_based_user_list` types**
+        ("Membership to lists of these types depends on the rules defined
+        by the lists") - it's set on each `FlexibleRuleOperandInfo` instead,
+        which is what this method does. Don't reintroduce a
+        `membership_life_span` parameter here without re-reading that
+        resource docstring.
+
+        Args:
+            ctx: FastMCP context
+            customer_id: The customer ID
+            name: User list name
+            url_contains_patterns: Page qualifies if its URL contains ANY
+                of these strings - typically a path segment, e.g.
+                "/zoloti-godynnyky/" rather than a full URL (the product
+                slug/id on the end doesn't matter for a category-page
+                match)
+            lookback_window_days: How far back to look for a qualifying
+                visit, in days - this is the "7/14/30/90-day" knob for a
+                rule-based list (same value applied to every pattern's
+                operand)
+            description: Optional description
+            membership_status: OPEN or CLOSED
+            prepopulate: If True, requests backfilling from existing site
+                visitors (Display Network only, limited to the last 30
+                days from when the remarketing tag was added - Google's
+                own limitation, not this method's)
+
+        Returns:
+            Created user list details
+        """
+        if not url_contains_patterns:
+            raise ValueError("url_contains_patterns must be a non-empty list")
+
+        try:
+            customer_id = format_customer_id(customer_id)
+
+            user_list = UserList()
+            user_list.name = name
+            if description:
+                user_list.description = description
+            user_list.membership_status = resolve_enum(
+                UserListMembershipStatusEnum.UserListMembershipStatus,
+                membership_status,
+                "membership_status",
+            )
+            # membership_life_span is deliberately NOT set here - it's
+            # documented as ignored for rule_based_user_list types.
+            # lookback_window_days (below, per-operand) is the field that
+            # actually governs a rule-based list's day-window.
+
+            operands = []
+            for pattern in url_contains_patterns:
+                string_rule_item = UserListStringRuleItemInfo()
+                string_rule_item.operator = UserListStringRuleItemOperatorEnum.UserListStringRuleItemOperator.CONTAINS
+                string_rule_item.value = pattern
+
+                rule_item = UserListRuleItemInfo()
+                rule_item.name = "url__"
+                rule_item.string_rule_item = string_rule_item
+
+                group = UserListRuleItemGroupInfo()
+                group.rule_items = [rule_item]
+
+                rule = UserListRuleInfo()
+                rule.rule_type = UserListRuleTypeEnum.UserListRuleType.OR_OF_ANDS
+                rule.rule_item_groups = [group]
+
+                operand = FlexibleRuleOperandInfo()
+                operand.rule = rule
+                operand.lookback_window_days = lookback_window_days
+                operands.append(operand)
+
+            flexible_rule_user_list = FlexibleRuleUserListInfo()
+            flexible_rule_user_list.inclusive_rule_operator = (
+                UserListFlexibleRuleOperatorEnum.UserListFlexibleRuleOperator.OR
+            )
+            flexible_rule_user_list.inclusive_operands = operands
+
+            rule_based_user_list = RuleBasedUserListInfo()
+            if prepopulate:
+                rule_based_user_list.prepopulation_status = UserListPrepopulationStatusEnum.UserListPrepopulationStatus.REQUESTED
+            rule_based_user_list.flexible_rule_user_list = flexible_rule_user_list
+            user_list.rule_based_user_list = rule_based_user_list
+
+            operation = UserListOperation()
+            operation.create = user_list
+
+            request = MutateUserListsRequest()
+            request.customer_id = customer_id
+            request.operations = [operation]
+
+            response: MutateUserListsResponse = self.client.mutate_user_lists(
+                request=request
+            )
+
+            await ctx.log(
+                level="info",
+                message=(
+                    f"Created rule-based user list '{name}' "
+                    f"({len(url_contains_patterns)} URL pattern(s), "
+                    f"{lookback_window_days}-day lookback window)"
+                ),
+            )
+
+            return serialize_proto_message(response)
+
+        except GoogleAdsException as e:
+            error_msg = format_ads_error(e)
+            await ctx.log(level="error", message=error_msg)
+            raise Exception(error_msg) from e
+        except Exception as e:
+            error_msg = f"Failed to create rule-based user list: {str(e)}"
+            await ctx.log(level="error", message=error_msg)
+            raise Exception(error_msg) from e
+
     async def update_user_list(
         self,
         ctx: Context,
@@ -466,6 +634,51 @@ class UserListService:
             raise Exception(error_msg) from e
         except Exception as e:
             error_msg = f"Failed to update user list: {str(e)}"
+            await ctx.log(level="error", message=error_msg)
+            raise Exception(error_msg) from e
+
+    async def remove_user_list(
+        self,
+        ctx: Context,
+        customer_id: str,
+        user_list_id: str,
+    ) -> Dict[str, Any]:
+        """Remove a user list.
+
+        Args:
+            ctx: FastMCP context
+            customer_id: The customer ID
+            user_list_id: The user list ID to remove
+
+        Returns:
+            Removal result
+        """
+        try:
+            customer_id = format_customer_id(customer_id)
+            resource_name = f"customers/{customer_id}/userLists/{user_list_id}"
+
+            operation = UserListOperation()
+            operation.remove = resource_name
+
+            request = MutateUserListsRequest()
+            request.customer_id = customer_id
+            request.operations = [operation]
+
+            response = self.client.mutate_user_lists(request=request)
+
+            await ctx.log(
+                level="info",
+                message=f"Removed user list {user_list_id}",
+            )
+
+            return serialize_proto_message(response)
+
+        except GoogleAdsException as e:
+            error_msg = format_ads_error(e)
+            await ctx.log(level="error", message=error_msg)
+            raise Exception(error_msg) from e
+        except Exception as e:
+            error_msg = f"Failed to remove user list: {str(e)}"
             await ctx.log(level="error", message=error_msg)
             raise Exception(error_msg) from e
 
@@ -608,6 +821,58 @@ def create_user_list_tools(
             membership_life_span=membership_life_span,
         )
 
+    async def create_rule_based_user_list(
+        ctx: Context,
+        customer_id: str,
+        name: str,
+        url_contains_patterns: List[str],
+        lookback_window_days: int = 30,
+        description: Optional[str] = None,
+        membership_status: str = "OPEN",
+        prepopulate: bool = True,
+    ) -> Dict[str, Any]:
+        """Create a rule-based remarketing user list: visitors of any page
+        whose URL contains one of the given patterns - e.g. a classic
+        "category page visitors" list keyed on path segments like
+        "/zoloti-godynnyky/". Matches ANY pattern (OR), not all of them.
+
+        To build a 7/14/30/90-day set for the same pages, call this 4
+        times with the same url_contains_patterns and a different
+        lookback_window_days each time - that's the field that actually
+        varies between otherwise-identical "day" variants for a rule-based
+        list (NOT membership_life_span, which Google Ads documents as
+        ignored for this list type - confirmed the hard way: creating 4
+        lists with membership_life_span set read back as "0" for all of
+        them).
+
+        Args:
+            customer_id: The customer ID
+            name: User list name
+            url_contains_patterns: Page qualifies if its URL contains ANY
+                of these strings - typically a path segment (e.g.
+                "/zoloti-godynnyky/"), not a full URL
+            lookback_window_days: How far back to look for a qualifying
+                visit, in days - the actual "7/14/30/90-day" knob here
+            description: Optional description
+            membership_status: OPEN (can add users) or CLOSED
+            prepopulate: If True, requests backfilling from existing site
+                visitors (Display Network only, last 30 days - Google's
+                own limitation)
+
+        Returns:
+            Created user list details including resource_name and user_list_id
+        """
+        return await service.create_rule_based_user_list(
+            ctx=ctx,
+            customer_id=customer_id,
+            name=name,
+            url_contains_patterns=url_contains_patterns,
+            lookback_window_days=lookback_window_days,
+            description=description,
+            membership_status=membership_status,
+            prepopulate=prepopulate,
+        )
+
     async def update_user_list(
         ctx: Context,
         customer_id: str,
@@ -640,13 +905,35 @@ def create_user_list_tools(
             membership_life_span=membership_life_span,
         )
 
+    async def remove_user_list(
+        ctx: Context,
+        customer_id: str,
+        user_list_id: str,
+    ) -> Dict[str, Any]:
+        """Remove a user list.
+
+        Args:
+            customer_id: The customer ID
+            user_list_id: The user list ID to remove
+
+        Returns:
+            Removal result
+        """
+        return await service.remove_user_list(
+            ctx=ctx,
+            customer_id=customer_id,
+            user_list_id=user_list_id,
+        )
+
     tools.extend(
         [
             create_basic_user_list,
             create_crm_based_user_list,
             create_similar_user_list,
             create_logical_user_list,
+            create_rule_based_user_list,
             update_user_list,
+            remove_user_list,
         ]
     )
     return tools

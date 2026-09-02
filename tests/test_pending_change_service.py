@@ -9,6 +9,7 @@ import pytest
 from fastmcp import Context
 
 from src.services.ad_group.ad_group_criterion_service import AdGroupCriterionService
+from src.services.audiences.user_list_service import UserListService
 from src.services.bidding.budget_service import BudgetService
 from src.services.campaign.campaign_service import CampaignService
 from src.services.review.fixes_log_service import FixesLogService
@@ -41,6 +42,13 @@ def mock_campaign_service() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_user_list_service() -> AsyncMock:
+    """A mocked UserListService - apply_pending_change should delegate
+    audience create/remove to this, never build Google Ads protos itself."""
+    return AsyncMock(spec=UserListService)
+
+
+@pytest.fixture
 def mock_fixes_log_service() -> AsyncMock:
     """A mocked FixesLogService - every successful apply must log to this,
     automatically, without a separate explicit call."""
@@ -53,6 +61,7 @@ def pending_change_service(
     mock_ad_group_criterion_service: AsyncMock,
     mock_budget_service: AsyncMock,
     mock_campaign_service: AsyncMock,
+    mock_user_list_service: AsyncMock,
     mock_fixes_log_service: AsyncMock,
 ) -> PendingChangeService:
     store = PendingChangeStore(path=tmp_path / "pending_changes.json")
@@ -61,6 +70,7 @@ def pending_change_service(
         ad_group_criterion_service=mock_ad_group_criterion_service,
         budget_service=mock_budget_service,
         campaign_service=mock_campaign_service,
+        user_list_service=mock_user_list_service,
         fixes_log_service=mock_fixes_log_service,
     )
 
@@ -732,3 +742,155 @@ async def test_propose_add_keywords_no_existing_keywords_not_flagged(
 
     assert result["has_duplicates"] is False
     assert "DUPLICATE" not in result["preview"]
+
+
+# ---------------------------------------------------------------------------
+# propose_create_rule_based_user_list / apply
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_propose_create_rule_based_user_list_does_not_call_api(
+    pending_change_service: PendingChangeService,
+    mock_user_list_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    result = await pending_change_service.propose_create_rule_based_user_list(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        name="Gold users / 30 / 2026",
+        url_contains_patterns=["/zoloti-godynnyky/", "/zoloti-serezhky/"],
+        lookback_window_days=30,
+    )
+
+    assert result["status"] == "pending"
+    assert "/zoloti-godynnyky/" in result["preview"]
+    assert "/zoloti-serezhky/" in result["preview"]
+    assert "30-day" in result["preview"]
+    mock_user_list_service.create_rule_based_user_list.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_propose_create_rule_based_user_list_empty_patterns_raises(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        await pending_change_service.propose_create_rule_based_user_list(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            name="Empty",
+            url_contains_patterns=[],
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_create_rule_based_user_list_calls_user_list_service(
+    pending_change_service: PendingChangeService,
+    mock_user_list_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    mock_user_list_service.create_rule_based_user_list.return_value = {
+        "results": [{"resource_name": "customers/1234567890/userLists/999"}]
+    }
+
+    proposed = await pending_change_service.propose_create_rule_based_user_list(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        name="Gold users / 30 / 2026",
+        url_contains_patterns=["/zoloti-godynnyky/"],
+        lookback_window_days=30,
+        expectation="Audience should grow within 1-2 weeks",
+        account_name="boo.ua",
+    )
+
+    result = await pending_change_service.apply_pending_change(
+        ctx=mock_ctx, change_id=proposed["change_id"]
+    )
+
+    mock_user_list_service.create_rule_based_user_list.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        name="Gold users / 30 / 2026",
+        url_contains_patterns=["/zoloti-godynnyky/"],
+        lookback_window_days=30,
+        description=None,
+        membership_status="OPEN",
+        prepopulate=True,
+    )
+    assert result["status"] == "applied"
+    mock_fixes_log_service.log_fix.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        fix_id=proposed["change_id"],
+        what="Created rule-based user list",
+        fix_text=proposed["preview"],
+        when=date.today().isoformat(),
+        expectation="Audience should grow within 1-2 weeks",
+        account_name="boo.ua",
+    )
+
+
+# ---------------------------------------------------------------------------
+# propose_remove_user_list / apply
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_propose_remove_user_list_does_not_call_api(
+    pending_change_service: PendingChangeService,
+    mock_user_list_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    result = await pending_change_service.propose_remove_user_list(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        user_list_id="746722256",
+        user_list_name="Розница: пользователи, не завершившие покупку (AdWords)",
+    )
+
+    assert result["status"] == "pending"
+    assert "746722256" in result["preview"]
+    assert "Розница" in result["preview"]
+    mock_user_list_service.remove_user_list.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_apply_remove_user_list_calls_user_list_service(
+    pending_change_service: PendingChangeService,
+    mock_user_list_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    mock_user_list_service.remove_user_list.return_value = {
+        "results": [{"resource_name": "customers/1234567890/userLists/746722256"}]
+    }
+
+    proposed = await pending_change_service.propose_remove_user_list(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        user_list_id="746722256",
+        expectation="Cleanup - list is empty and stale",
+        account_name="boo.ua",
+    )
+
+    result = await pending_change_service.apply_pending_change(
+        ctx=mock_ctx, change_id=proposed["change_id"]
+    )
+
+    mock_user_list_service.remove_user_list.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        user_list_id="746722256",
+    )
+    assert result["status"] == "applied"
+    mock_fixes_log_service.log_fix.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        fix_id=proposed["change_id"],
+        what="Removed user list",
+        fix_text=proposed["preview"],
+        when=date.today().isoformat(),
+        expectation="Cleanup - list is empty and stale",
+        account_name="boo.ua",
+    )
