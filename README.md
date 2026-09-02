@@ -50,6 +50,7 @@ Current tracker status:
 | Type policy | Generated Google Ads protobuf types |
 | Feature parity | [`docs/FEATURE_PARITY.md`](./docs/FEATURE_PARITY.md) |
 | Detailed audit | [`TRACKER.md`](./TRACKER.md) |
+| What this service can do (task-level) | [`docs/CAPABILITIES.md`](./docs/CAPABILITIES.md) |
 | New client setup | [`docs/CLIENT_ONBOARDING.md`](./docs/CLIENT_ONBOARDING.md) |
 | V2 commercial roadmap (not built yet) | [`docs/V2_COMMERCIAL_ROADMAP.md`](./docs/V2_COMMERCIAL_ROADMAP.md) |
 
