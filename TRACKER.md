@@ -148,6 +148,30 @@ group (`benchmarks`, `content_creator_insights`, `incentive`,
 `multi_party_auth_review`, `product_link_invitation`, `reservation`,
 `third_party_app_analytics_link`, `recommendation_subscription`).
 
+## 🚧 2026-09-03 (3) — Gap-closure batch 3: `smart_campaign_setting` closed
+
+Next item off the backlog. Distinct from the already-✅
+`smart_campaign_suggest` (setup-time copy/budget/keyword-theme
+suggestions) - this wraps `SmartCampaignSettingService`, which manages a
+*live* Smart campaign's settings and reports its serving status.
+
+- `src/services/campaign/smart_campaign_setting_service.py`
+  (`SmartCampaignSettingService`), mounted as `"smart_campaign_setting"`:
+  `get_smart_campaign_status` (PAUSED/NOT_ELIGIBLE/PENDING/ELIGIBLE/
+  REMOVED/ENDED plus status-specific detail fields) and
+  `update_smart_campaign_setting` (phone, advertising language, landing
+  page as either a URL or an ads-optimized business profile, business
+  name or Business Profile location). No create/remove - confirmed the
+  proto only has an `update` operation; the setting exists implicitly
+  once the Smart campaign itself is created.
+
+Tests: 5 new, including both landing-page branches
+(final_url vs. include_lead_form) and both business-identity branches
+(business_name vs. business_profile_location). `ruff format` + `pyright`
+clean, full suite 737 passed / 4 skipped (up from 732). Progress: 93 → 94/110
+(85.5%), 16 ❌ remain (see the batch-1 entry above for the rest of the list,
+unchanged apart from removing this one).
+
 ## ✅ 2026-09-02 (3) — Negative keywords: shared-set add/remove wired into propose/apply
 
 User asked whether negative-keyword create/edit (at least adding words) is
@@ -1183,8 +1207,8 @@ Goal: 1:1 mapping of ALL Google Ads services with full type safety using generat
 
 ## Progress Summary
 - Total Services: 110 (audited against the real `google-ads==31.2.0` v25 service list, `.venv/Lib/site-packages/google/ads/googleads/v25/services/services/` — see 2026-08-17 re-audit note above)
-- ✅ Implemented: 93 (84.5%)
-- ❌ Not Implemented: 17 (15.5%)
+- ✅ Implemented: 94 (85.5%)
+- ❌ Not Implemented: 16 (14.5%)
 
 **2026-09-03 gap-closure update:** started working through the ❌ list for
 full 1:1 coverage (see the dated TRACKER entry below for the batch and the
@@ -1298,7 +1322,7 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
 3. ✅ `bidding_strategy` - Bidding strategies
 4. ✅ `campaign_budget` (our `budget_service.py`) - Campaign budget management
 
-### Campaigns (17 services) — 15 ✅ / 2 ❌
+### Campaigns (17 services) — 16 ✅ / 1 ❌
 1. ✅ `campaign` - Campaign management
 2. ✅ `campaign_asset` - Campaign-level assets
 3. ✅ `campaign_asset_set` - Campaign asset sets
@@ -1323,8 +1347,13 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
 13. ✅ `experiment` - Campaign experiments
 14. ✅ `experiment_arm` - Experiment arms/variants
 15. ✅ `smart_campaign_suggest` - Smart campaign suggestions
-16. ❌ `smart_campaign_setting` - Smart campaign settings (distinct from
-    `smart_campaign_suggest`, which IS implemented)
+16. ✅ `smart_campaign_setting` - Smart campaign settings (distinct from
+    `smart_campaign_suggest`). **Added 2026-09-03**:
+    `src/services/campaign/smart_campaign_setting_service.py`, mounted as
+    `"smart_campaign_setting"` - `get_smart_campaign_status` (serving
+    status + status-specific details) and `update_smart_campaign_setting`
+    (phone, language, landing page, business profile). No create/remove -
+    the setting is created implicitly with the Smart campaign itself.
 17. ❌ `shareable_preview` - Shareable ad previews
 
 ### Conversions (11 services) — 10 ✅ / 1 ❌

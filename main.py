@@ -173,6 +173,9 @@ from src.servers.search_server import search_server
 from src.servers.shared_criterion_server import shared_criterion_server
 from src.servers.shared_set_server import shared_set_server
 from src.servers.smart_campaign_server import smart_campaign_server
+from src.servers.smart_campaign_setting_server import (
+    smart_campaign_setting_server,
+)
 
 # from src.sdk_servers.extension_feed_item_server import extension_feed_item_sdk_server  # Not available in v20
 from src.servers.user_data_server import user_data_server
@@ -411,6 +414,7 @@ SERVER_GROUPS = {
     ],
     "other": [
         ("smart_campaign", smart_campaign_server),
+        ("smart_campaign_setting", smart_campaign_setting_server),
         ("batch_job", batch_job_server),
         ("user_data", user_data_server),
     ],
