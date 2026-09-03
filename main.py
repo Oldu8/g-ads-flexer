@@ -71,6 +71,9 @@ from src.servers.campaign_customizer_server import (
     campaign_customizer_server,
 )
 from src.servers.campaign_draft_server import campaign_draft_server
+from src.servers.campaign_goal_config_server import (
+    campaign_goal_config_server,
+)
 from src.servers.campaign_group_server import campaign_group_server
 from src.servers.campaign_label_server import campaign_label_server
 from src.servers.campaign_server import campaign_server
@@ -132,6 +135,7 @@ from src.servers.experiment_arm_server import experiment_arm_server
 from src.servers.experiment_server import experiment_server
 from src.servers.fixes_log_server import fixes_log_server
 from src.servers.geo_target_constant_server import geo_target_constant_server
+from src.servers.goal_server import goal_server
 from src.servers.google_ads_field_server import google_ads_field_server
 from src.servers.google_ads_server import google_ads_server
 from src.servers.identity_verification_server import (
@@ -367,6 +371,8 @@ SERVER_GROUPS = {
         ("custom_conversion_goal", custom_conversion_goal_server),
         ("customer_conversion_goal", customer_conversion_goal_server),
         ("campaign_conversion_goal", campaign_conversion_goal_server),
+        ("goal", goal_server),
+        ("campaign_goal_config", campaign_goal_config_server),
         ("offline_user_data_job", offline_user_data_job_server),
         ("remarketing_action", remarketing_action_server),
     ],

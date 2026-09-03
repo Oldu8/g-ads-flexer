@@ -106,6 +106,48 @@ wired into propose/apply - per the user's stated order (coverage first,
 then propose/apply), that's the next phase after the ❌ list is closed out,
 not interleaved with it.
 
+## 🚧 2026-09-03 (2) — Gap-closure batch 2: `campaign_goal_config` + `goal` closed
+
+Continuing the backlog above. Read `goal_setting.py`/`goal_common.py`/
+`campaign_goal_settings.py` first as planned - turned out simpler than
+feared: all three `GoalSetting`/`CampaignGoalSettings` sub-message variants
+(retention / new-customer-acquisition / loyalty-retention) share the same
+`CustomerLifecycleOptimizationValueSettings` shape, just wrapped in a
+different oneof field name. Both services done together since
+`campaign_goal_config` references a `goal` resource_name:
+
+- `goal` - `src/services/conversions/goal_service.py` (`GoalService`),
+  mounted as `"goal"`. `create_goal`/`update_goal` only - the proto has no
+  `remove` operation for `Goal` at all (documented in the module
+  docstring so nobody goes looking for a delete tool that can't exist).
+- `campaign_goal_config` -
+  `src/services/campaign/campaign_goal_config_service.py`
+  (`CampaignGoalConfigService`), mounted as `"campaign_goal_config"`.
+  `link_campaign_to_goal`/`update_campaign_goal_config`/
+  `unlink_campaign_from_goal` - full create/update/remove, unlike `goal`.
+- Verified live (via a throwaway script, not committed) that proto-plus's
+  `msg.oneof_submessage.field = value` pattern actually writes through to
+  the parent message before relying on it in both services - it does
+  (protobuf auto-vivifies a singular message field the first time one of
+  its sub-fields is set).
+
+Tests: 11 new (`test_goal_service.py`, `test_campaign_goal_config_service.py`),
+covering all three goal-type branches, the update field-mask, and the
+create-only vs create/update/remove asymmetry between the two services.
+`ruff format` + `pyright` clean, full suite 732 passed / 4 skipped (up from
+721). Progress: 91 → **93/110 (84.5%)**, 17 ❌ remain.
+
+**Updated remaining backlog** (unchanged from the batch-1 entry above minus
+these two - see that entry for the full list and reasoning per item):
+`smart_campaign_setting`, `keyword_theme_constant`, `shareable_preview`,
+`asset_group_listing_group_filter`, `you_tube_video_upload`,
+`customer_sk_ad_network_conversion_value_schema`, `local_services_lead`,
+`automatically_created_asset_removal`, `travel_asset_suggestion`,
+`asset_generation`, then the batch-3 "Product Integration & Business Data"
+group (`benchmarks`, `content_creator_insights`, `incentive`,
+`multi_party_auth_review`, `product_link_invitation`, `reservation`,
+`third_party_app_analytics_link`, `recommendation_subscription`).
+
 ## ✅ 2026-09-02 (3) — Negative keywords: shared-set add/remove wired into propose/apply
 
 User asked whether negative-keyword create/edit (at least adding words) is
@@ -1141,8 +1183,8 @@ Goal: 1:1 mapping of ALL Google Ads services with full type safety using generat
 
 ## Progress Summary
 - Total Services: 110 (audited against the real `google-ads==31.2.0` v25 service list, `.venv/Lib/site-packages/google/ads/googleads/v25/services/services/` — see 2026-08-17 re-audit note above)
-- ✅ Implemented: 91 (82.7%)
-- ❌ Not Implemented: 19 (17.3%)
+- ✅ Implemented: 93 (84.5%)
+- ❌ Not Implemented: 17 (15.5%)
 
 **2026-09-03 gap-closure update:** started working through the ❌ list for
 full 1:1 coverage (see the dated TRACKER entry below for the batch and the
@@ -1256,7 +1298,7 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
 3. ✅ `bidding_strategy` - Bidding strategies
 4. ✅ `campaign_budget` (our `budget_service.py`) - Campaign budget management
 
-### Campaigns (17 services) — 14 ✅ / 3 ❌
+### Campaigns (17 services) — 15 ✅ / 2 ❌
 1. ✅ `campaign` - Campaign management
 2. ✅ `campaign_asset` - Campaign-level assets
 3. ✅ `campaign_asset_set` - Campaign asset sets
@@ -1265,9 +1307,12 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
 6. ✅ `campaign_criterion` - Campaign targeting criteria
 7. ✅ `campaign_customizer` - Campaign customizers
 8. ✅ `campaign_draft` - Campaign drafts for testing
-9. ❌ `campaign_goal_config` - Campaign lifecycle-goal config (new in v25;
-   replaces the old, now-removed `campaign_lifecycle_goal` — don't confuse
-   with the two below)
+9. ✅ `campaign_goal_config` - Campaign lifecycle-goal config (new in v25;
+   replaces the old, now-removed `campaign_lifecycle_goal`). **Added
+   2026-09-03**: `src/services/campaign/campaign_goal_config_service.py`,
+   mounted as `"campaign_goal_config"` - links a campaign to a `goal`
+   (below) for campaign-specific lifecycle optimization; built together
+   with `goal` since this resource references it directly.
 10. ✅ `campaign_group` - Campaign groups (grouping campaigns for reporting/
     goals - not PMax-specific). **Added 2026-09-03**:
     `src/services/campaign/campaign_group_service.py`, mounted as
@@ -1282,7 +1327,7 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
     `smart_campaign_suggest`, which IS implemented)
 17. ❌ `shareable_preview` - Shareable ad previews
 
-### Conversions (11 services) — 9 ✅ / 2 ❌
+### Conversions (11 services) — 10 ✅ / 1 ❌
 1. ✅ `conversion_action` (our `conversion_service.py`) - Conversion actions
 2. ✅ `conversion_adjustment_upload` - Upload conversion adjustments
 3. ✅ `conversion_custom_variable` - Custom variables for conversions
@@ -1295,8 +1340,11 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
 8. ✅ `custom_conversion_goal` - Custom conversion goals
 9. ✅ `customer_conversion_goal` - Customer-level conversion goals
 10. ❌ `customer_sk_ad_network_conversion_value_schema` - SK Ad Network schema
-11. ❌ `goal` - Customer lifecycle-goal (new in v25; replaces the old,
-    now-removed `customer_lifecycle_goal`)
+11. ✅ `goal` - Customer lifecycle-goal (new in v25; replaces the old,
+    now-removed `customer_lifecycle_goal`). **Added 2026-09-03**:
+    `src/services/conversions/goal_service.py`, mounted as `"goal"`. Only
+    supports create/update - `GoalOperation` has no `remove` field, so
+    there is no way to delete a goal via the API.
 
 ### Data Import & Jobs (5 services) — 4 ✅ / 1 ❌
 1. ✅ `batch_job` - Batch job operations
