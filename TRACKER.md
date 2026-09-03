@@ -1,5 +1,44 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-09-02 (3) — Negative keywords: shared-set add/remove wired into propose/apply
+
+User asked whether negative-keyword create/edit (at least adding words) is
+possible at all - reading was already fine. Audit found add/remove already
+exists at all 4 levels (account via `CustomerNegativeCriterionService`,
+campaign via `CampaignCriterionService`, ad-group via
+`AdGroupCriterionService`, shared-set via `SharedCriterionService`), but
+only the ad-group path was wired into propose/apply - the other three were
+callable directly, bypassing review. Asked user which of the 4 to wire in;
+answer: **shared set only** - that's boo.ua's actual negative-keyword
+architecture (20+ shared lists shared across campaigns, see the
+`gads-negative-keyword-architecture` memory), so it's the highest-traffic
+write path of the three still un-gated. Account/campaign/ad-group levels
+are deliberately left un-wired for now, not an oversight.
+
+**Fixed**: `pending_change_service.py` gains two more kinds -
+`add_negative_keywords_to_shared_set` and `remove_shared_criterion`:
+- `PendingChangeService.__init__` gains `shared_criterion_service`
+  (defaults to a real `SharedCriterionService()`).
+- `propose_add_negative_keywords_to_shared_set` - validates non-empty +
+  text present, builds a preview via new `_format_shared_set_keywords_preview`
+  helper (same shape as the existing keywords preview, minus `cpc_bid_micros`
+  since shared-set negative criteria don't carry bids; flags duplicates
+  against `existing_keywords` and flags proposals over
+  `MAX_KEYWORDS_PER_PROPOSAL`), persists as "pending", never touches the API.
+- `propose_remove_shared_criterion` - same pattern, preview via new
+  `_format_remove_shared_criterion_preview`.
+- `apply_pending_change`'s dispatch gains matching branches calling the
+  already-tested `SharedCriterionService.add_keywords_to_shared_set` /
+  `remove_shared_criterion` methods - no proto-building logic duplicated
+  here, same as every other kind.
+- Both get standalone tool wrappers registered in `create_pending_change_tools`.
+
+Tests: 6 new (propose-doesn't-call-API for both kinds, empty-list
+validation, duplicate-flagging, both apply-dispatch-plus-auto-log paths)
+using an injected mock `SharedCriterionService`, matching the existing
+per-kind test pattern. All 40 tests in `test_pending_change_service.py`
+pass. `ruff format` + `pyright` clean.
+
 ## ✅ 2026-09-02 (2) — User's process correction: audience create/remove now goes through propose/apply too
 
 User caught a real process violation in the entry right below: the gold-

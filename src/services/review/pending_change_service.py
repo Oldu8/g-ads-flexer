@@ -10,19 +10,25 @@ This wraps existing, already-tested write services (e.g.
 logic - the safety guarantee lives entirely in the propose/apply split, not
 in reimplementing the underlying mutate calls.
 
-Supports five `kind`s: "add_keywords" (the scenario the user asked for
+Supports seven `kind`s: "add_keywords" (the scenario the user asked for
 first - expanding a brand campaign's keyword list without risking an
 unreviewed competitor-brand term going live), "update_campaign_budget" and
 "update_campaign_bid_target" (2026-08-27 - the other in-scope "flexer"
-operations per TRACKER.md: budgets and bids), and
+operations per TRACKER.md: budgets and bids),
 "create_rule_based_user_list"/"remove_user_list" (2026-09-02 - audience
 creation/cleanup; added specifically because a prior session did this kind
 of live account change via ad-hoc scratch scripts instead of through this
 review system, which the user correctly called out - every write operation
 needs an explicit propose/apply step, no exceptions for "it's just an
-audience"). Adding a further `kind` means one more `propose_*` method plus
-one more branch in `apply_pending_change`'s dispatch - the store and
-tool-registration plumbing already support it.
+audience"), and "add_negative_keywords_to_shared_set"/
+"remove_shared_criterion" (2026-09-02 - shared negative-keyword lists are
+boo.ua's actual negative-keyword architecture - see the
+`gads-negative-keyword-architecture` memory - so this is the
+highest-traffic write path of the four negative-keyword levels
+(account/campaign/ad-group/shared-set), and was the one NOT yet gated by
+this review system before now). Adding a further `kind` means one more
+`propose_*` method plus one more branch in `apply_pending_change`'s
+dispatch - the store and tool-registration plumbing already support it.
 
 **Bid-target propose calls require `bidding_strategy_type`** - same reason
 `campaign_service.update_campaign` itself requires it (see the 2026-08-17
@@ -65,6 +71,7 @@ from src.services.bidding.budget_service import BudgetService
 from src.services.campaign.campaign_service import CampaignService
 from src.services.review.fixes_log_service import FixesLogService
 from src.services.review.pending_change_store import PendingChangeStore
+from src.services.shared.shared_criterion_service import SharedCriterionService
 from src.utils import get_logger
 
 logger = get_logger(__name__)
@@ -215,6 +222,52 @@ def _format_remove_user_list_preview(
     return f"Proposed removal of user list {label}."
 
 
+def _format_shared_set_keywords_preview(
+    shared_set_id: str,
+    keywords: List[Dict[str, str]],
+    existing_keywords: Optional[List[str]] = None,
+) -> tuple[str, bool, bool]:
+    """Returns (preview_text, exceeds_count_limit, has_duplicates). Same
+    shape as _format_keywords_preview, minus cpc_bid_micros - shared-set
+    (negative) criteria don't have bids."""
+    existing_lower = {t.lower() for t in (existing_keywords or [])}
+
+    exceeds_limit = len(keywords) > MAX_KEYWORDS_PER_PROPOSAL
+    lines = [
+        f"Proposed {len(keywords)} negative keyword(s) for shared set {shared_set_id}:"
+    ]
+    if exceeds_limit:
+        lines.insert(
+            0,
+            f"[!] EXCEEDS LIMIT: {len(keywords)} keywords proposed, guideline "
+            f"is {MAX_KEYWORDS_PER_PROPOSAL} per proposal - consider "
+            "splitting into smaller batches for easier review.",
+        )
+
+    has_duplicates = False
+    for kw in keywords:
+        text = kw.get("text", "?")
+        match_type = kw.get("match_type", "BROAD")
+        dup_note = ""
+        if text.lower() in existing_lower:
+            has_duplicates = True
+            dup_note = "  [!] DUPLICATE - already exists in this shared set"
+        lines.append(f'  - "{text}" ({match_type}){dup_note}')
+
+    return "\n".join(lines), exceeds_limit, has_duplicates
+
+
+def _format_remove_shared_criterion_preview(
+    criterion_resource_name: str, criterion_description: Optional[str]
+) -> str:
+    label = (
+        f'"{criterion_description}" ({criterion_resource_name})'
+        if criterion_description
+        else criterion_resource_name
+    )
+    return f"Proposed removal of shared criterion {label}."
+
+
 class PendingChangeService:
     """Review workflow for write operations that must not execute on the
     first call - see module docstring."""
@@ -226,6 +279,7 @@ class PendingChangeService:
         budget_service: Optional[BudgetService] = None,
         campaign_service: Optional[CampaignService] = None,
         user_list_service: Optional[UserListService] = None,
+        shared_criterion_service: Optional[SharedCriterionService] = None,
         fixes_log_service: Optional[FixesLogService] = None,
     ) -> None:
         self.store = store or PendingChangeStore()
@@ -235,6 +289,9 @@ class PendingChangeService:
         self._budget_service = budget_service or BudgetService()
         self._campaign_service = campaign_service or CampaignService()
         self._user_list_service = user_list_service or UserListService()
+        self._shared_criterion_service = (
+            shared_criterion_service or SharedCriterionService()
+        )
         self._fixes_log_service = fixes_log_service or FixesLogService()
 
     async def propose_add_keywords(
@@ -656,6 +713,146 @@ class PendingChangeService:
             "preview": preview,
         }
 
+    async def propose_add_negative_keywords_to_shared_set(
+        self,
+        ctx: Context,
+        customer_id: str,
+        shared_set_id: str,
+        keywords: List[Dict[str, str]],
+        existing_keywords: Optional[List[str]] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage negative keywords to add to a shared set for review - the
+        boo.ua account's actual negative-keyword architecture (20+ shared
+        lists attached across many campaigns), not per-campaign/ad-group
+        negatives.
+
+        Does not call the Google Ads API - only computes a preview and
+        persists it. Show the preview to the user and call
+        `apply_pending_change` only once they've explicitly approved it.
+
+        Same two advisory (non-blocking) sanity checks as
+        `propose_add_keywords`: a batch over `MAX_KEYWORDS_PER_PROPOSAL`,
+        and any keyword already present in `existing_keywords` - both
+        flagged in the preview and the returned dict, neither one raises.
+
+        Args:
+            ctx: FastMCP context
+            customer_id: The customer ID
+            shared_set_id: The shared set ID to add keywords to
+            keywords: List of dicts with 'text' and 'match_type' - no
+                cpc_bid_micros, shared-set (negative) criteria don't have
+                bids
+            existing_keywords: Keyword texts already present in this
+                shared set - look them up via the existing search/GAQL
+                tools first and pass them along; used only to flag
+                duplicates in the preview, never fetched by this method
+                itself
+            expectation: Which metric should move, and why - carried
+                through to the fixes-log sheet's "Expected Outcome" column
+                when this change is later applied
+            account_name: The account's descriptive name (e.g. "boo.ua") -
+                carried through to the fixes-log sheet's one-time title
+
+        Returns:
+            change_id, status ("pending"), preview, exceeds_limit, and
+            has_duplicates
+        """
+        if not keywords:
+            raise ValueError("keywords must be a non-empty list")
+        for kw in keywords:
+            if not kw.get("text"):
+                raise ValueError(f"keyword entry missing 'text': {kw}")
+
+        preview, exceeds_limit, has_duplicates = _format_shared_set_keywords_preview(
+            shared_set_id, keywords, existing_keywords
+        )
+        record = self.store.create(
+            kind="add_negative_keywords_to_shared_set",
+            params={
+                "customer_id": customer_id,
+                "shared_set_id": shared_set_id,
+                "keywords": keywords,
+                "expectation": expectation,
+                "account_name": account_name,
+            },
+            preview=preview,
+        )
+        await ctx.log(
+            level="info",
+            message=(
+                f"Proposed change {record['id']}: {len(keywords)} negative "
+                f"keyword(s) for shared set {shared_set_id}"
+                + (" [EXCEEDS LIMIT]" if exceeds_limit else "")
+                + (" [HAS DUPLICATES]" if has_duplicates else "")
+            ),
+        )
+        return {
+            "change_id": record["id"],
+            "status": record["status"],
+            "preview": preview,
+            "exceeds_limit": exceeds_limit,
+            "has_duplicates": has_duplicates,
+        }
+
+    async def propose_remove_shared_criterion(
+        self,
+        ctx: Context,
+        customer_id: str,
+        criterion_resource_name: str,
+        criterion_description: Optional[str] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a shared-set criterion removal for review.
+
+        Does not call the Google Ads API - only persists a preview. Show
+        the preview to the user and call `apply_pending_change` only once
+        they've explicitly approved it.
+
+        Args:
+            ctx: FastMCP context
+            customer_id: The customer ID
+            criterion_resource_name: Full resource name of the shared
+                criterion to remove (e.g.
+                "customers/123/sharedCriteria/456~789")
+            criterion_description: The keyword text (or similar) this
+                criterion represents - look it up via the existing
+                search/GAQL tools first and pass it along, purely to make
+                the preview readable; this method never fetches it itself
+            expectation: Why this is being removed / what should follow
+            account_name: The account's descriptive name (e.g. "boo.ua")
+
+        Returns:
+            change_id, status ("pending"), and a human-readable preview
+        """
+        preview = _format_remove_shared_criterion_preview(
+            criterion_resource_name, criterion_description
+        )
+        record = self.store.create(
+            kind="remove_shared_criterion",
+            params={
+                "customer_id": customer_id,
+                "criterion_resource_name": criterion_resource_name,
+                "expectation": expectation,
+                "account_name": account_name,
+            },
+            preview=preview,
+        )
+        await ctx.log(
+            level="info",
+            message=(
+                f"Proposed change {record['id']}: remove shared criterion "
+                f"{criterion_resource_name}"
+            ),
+        )
+        return {
+            "change_id": record["id"],
+            "status": record["status"],
+            "preview": preview,
+        }
+
     async def list_pending_changes(
         self, ctx: Context, status: Optional[str] = "pending"
     ) -> List[Dict[str, Any]]:
@@ -767,6 +964,21 @@ class PendingChangeService:
                 user_list_id=params["user_list_id"],
             )
             what_label = "Removed user list"
+        elif kind == "add_negative_keywords_to_shared_set":
+            result = await self._shared_criterion_service.add_keywords_to_shared_set(
+                ctx=ctx,
+                customer_id=params["customer_id"],
+                shared_set_id=params["shared_set_id"],
+                keywords=params["keywords"],
+            )
+            what_label = "Added negative keywords to shared set"
+        elif kind == "remove_shared_criterion":
+            result = await self._shared_criterion_service.remove_shared_criterion(
+                ctx=ctx,
+                customer_id=params["customer_id"],
+                criterion_resource_name=params["criterion_resource_name"],
+            )
+            what_label = "Removed shared criterion"
         else:
             raise Exception(f"Unknown pending-change kind: {kind}")
 
@@ -1094,6 +1306,84 @@ def create_pending_change_tools(
             account_name=account_name,
         )
 
+    async def propose_add_negative_keywords_to_shared_set(
+        ctx: Context,
+        customer_id: str,
+        shared_set_id: str,
+        keywords: List[Dict[str, str]],
+        existing_keywords: Optional[List[str]] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage negative keywords to add to a shared set for human review
+        before they reach the live account - boo.ua's actual
+        negative-keyword architecture (shared lists attached across many
+        campaigns), not per-campaign/ad-group negatives. Does NOT call the
+        Google Ads API - show the returned preview to the user and only
+        call apply_pending_change once they've explicitly approved it.
+
+        Args:
+            customer_id: The customer ID
+            shared_set_id: The shared set ID to add keywords to
+            keywords: List of dicts with 'text' and 'match_type' (no
+                cpc_bid_micros - negative criteria don't have bids)
+            existing_keywords: Keyword texts already present in this
+                shared set - look them up via the existing search/GAQL
+                tools first; used only to flag duplicates in the preview
+            expectation: Which metric should move, and why - every applied
+                change is auto-logged to the fixes-log sheet, and this
+                becomes its "Expected Outcome"
+            account_name: The account's descriptive name (e.g. "boo.ua")
+
+        Returns:
+            change_id, status ("pending"), preview, exceeds_limit, and
+            has_duplicates
+        """
+        return await service.propose_add_negative_keywords_to_shared_set(
+            ctx=ctx,
+            customer_id=customer_id,
+            shared_set_id=shared_set_id,
+            keywords=keywords,
+            existing_keywords=existing_keywords,
+            expectation=expectation,
+            account_name=account_name,
+        )
+
+    async def propose_remove_shared_criterion(
+        ctx: Context,
+        customer_id: str,
+        criterion_resource_name: str,
+        criterion_description: Optional[str] = None,
+        expectation: Optional[str] = None,
+        account_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stage a shared-set criterion removal for human review before it
+        reaches the live account. Does NOT call the Google Ads API - show
+        the returned preview to the user and only call apply_pending_change
+        once they've explicitly approved it.
+
+        Args:
+            customer_id: The customer ID
+            criterion_resource_name: Full resource name of the shared
+                criterion to remove
+            criterion_description: The keyword text this criterion
+                represents, for a readable preview - look it up first,
+                this tool doesn't fetch it
+            expectation: Why this is being removed / what should follow
+            account_name: The account's descriptive name (e.g. "boo.ua")
+
+        Returns:
+            change_id, status ("pending"), and a human-readable preview
+        """
+        return await service.propose_remove_shared_criterion(
+            ctx=ctx,
+            customer_id=customer_id,
+            criterion_resource_name=criterion_resource_name,
+            criterion_description=criterion_description,
+            expectation=expectation,
+            account_name=account_name,
+        )
+
     async def list_pending_changes(
         ctx: Context, status: Optional[str] = "pending"
     ) -> List[Dict[str, Any]]:
@@ -1149,6 +1439,8 @@ def create_pending_change_tools(
             propose_update_campaign_bid_target,
             propose_create_rule_based_user_list,
             propose_remove_user_list,
+            propose_add_negative_keywords_to_shared_set,
+            propose_remove_shared_criterion,
             list_pending_changes,
             get_pending_change,
             apply_pending_change,

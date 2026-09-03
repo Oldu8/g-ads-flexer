@@ -18,6 +18,7 @@ from src.services.review.pending_change_service import (
     create_pending_change_tools,
 )
 from src.services.review.pending_change_store import PendingChangeStore
+from src.services.shared.shared_criterion_service import SharedCriterionService
 
 
 @pytest.fixture
@@ -49,6 +50,14 @@ def mock_user_list_service() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_shared_criterion_service() -> AsyncMock:
+    """A mocked SharedCriterionService - apply_pending_change should
+    delegate shared-set negative-keyword add/remove to this, never build
+    Google Ads protos itself."""
+    return AsyncMock(spec=SharedCriterionService)
+
+
+@pytest.fixture
 def mock_fixes_log_service() -> AsyncMock:
     """A mocked FixesLogService - every successful apply must log to this,
     automatically, without a separate explicit call."""
@@ -62,6 +71,7 @@ def pending_change_service(
     mock_budget_service: AsyncMock,
     mock_campaign_service: AsyncMock,
     mock_user_list_service: AsyncMock,
+    mock_shared_criterion_service: AsyncMock,
     mock_fixes_log_service: AsyncMock,
 ) -> PendingChangeService:
     store = PendingChangeStore(path=tmp_path / "pending_changes.json")
@@ -71,6 +81,7 @@ def pending_change_service(
         budget_service=mock_budget_service,
         campaign_service=mock_campaign_service,
         user_list_service=mock_user_list_service,
+        shared_criterion_service=mock_shared_criterion_service,
         fixes_log_service=mock_fixes_log_service,
     )
 
@@ -892,5 +903,166 @@ async def test_apply_remove_user_list_calls_user_list_service(
         fix_text=proposed["preview"],
         when=date.today().isoformat(),
         expectation="Cleanup - list is empty and stale",
+        account_name="boo.ua",
+    )
+
+
+# ---------------------------------------------------------------------------
+# propose_add_negative_keywords_to_shared_set / apply
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_propose_add_negative_keywords_to_shared_set_does_not_call_api(
+    pending_change_service: PendingChangeService,
+    mock_shared_criterion_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    result = await pending_change_service.propose_add_negative_keywords_to_shared_set(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        shared_set_id="2079557334",
+        keywords=[{"text": "техносток", "match_type": "BROAD"}],
+    )
+
+    assert result["status"] == "pending"
+    assert "техносток" in result["preview"]
+    mock_shared_criterion_service.add_keywords_to_shared_set.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_propose_add_negative_keywords_to_shared_set_empty_list_raises(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        await pending_change_service.propose_add_negative_keywords_to_shared_set(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            shared_set_id="2079557334",
+            keywords=[],
+        )
+
+
+@pytest.mark.asyncio
+async def test_propose_add_negative_keywords_to_shared_set_flags_duplicates(
+    pending_change_service: PendingChangeService, mock_ctx: Context
+) -> None:
+    result = await pending_change_service.propose_add_negative_keywords_to_shared_set(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        shared_set_id="2079557334",
+        keywords=[{"text": "Техносток", "match_type": "BROAD"}],
+        existing_keywords=["техносток"],
+    )
+
+    assert result["has_duplicates"] is True
+    assert "DUPLICATE" in result["preview"]
+
+
+@pytest.mark.asyncio
+async def test_apply_add_negative_keywords_to_shared_set_calls_shared_criterion_service(
+    pending_change_service: PendingChangeService,
+    mock_shared_criterion_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    mock_shared_criterion_service.add_keywords_to_shared_set.return_value = [
+        {"resource_name": "customers/1234567890/sharedCriteria/2079557334~1"}
+    ]
+
+    proposed = await pending_change_service.propose_add_negative_keywords_to_shared_set(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        shared_set_id="2079557334",
+        keywords=[{"text": "техносток", "match_type": "BROAD"}],
+        expectation="Reduce wasted spend from competitor-brand searches",
+        account_name="boo.ua",
+    )
+
+    result = await pending_change_service.apply_pending_change(
+        ctx=mock_ctx, change_id=proposed["change_id"]
+    )
+
+    mock_shared_criterion_service.add_keywords_to_shared_set.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        shared_set_id="2079557334",
+        keywords=[{"text": "техносток", "match_type": "BROAD"}],
+    )
+    assert result["status"] == "applied"
+    mock_fixes_log_service.log_fix.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        fix_id=proposed["change_id"],
+        what="Added negative keywords to shared set",
+        fix_text=proposed["preview"],
+        when=date.today().isoformat(),
+        expectation="Reduce wasted spend from competitor-brand searches",
+        account_name="boo.ua",
+    )
+
+
+# ---------------------------------------------------------------------------
+# propose_remove_shared_criterion / apply
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_propose_remove_shared_criterion_does_not_call_api(
+    pending_change_service: PendingChangeService,
+    mock_shared_criterion_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    result = await pending_change_service.propose_remove_shared_criterion(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        criterion_resource_name="customers/1234567890/sharedCriteria/2079557334~1",
+        criterion_description="техносток",
+    )
+
+    assert result["status"] == "pending"
+    assert "техносток" in result["preview"]
+    mock_shared_criterion_service.remove_shared_criterion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_apply_remove_shared_criterion_calls_shared_criterion_service(
+    pending_change_service: PendingChangeService,
+    mock_shared_criterion_service: AsyncMock,
+    mock_fixes_log_service: AsyncMock,
+    mock_ctx: Context,
+) -> None:
+    mock_shared_criterion_service.remove_shared_criterion.return_value = {
+        "results": [
+            {"resource_name": "customers/1234567890/sharedCriteria/2079557334~1"}
+        ]
+    }
+
+    proposed = await pending_change_service.propose_remove_shared_criterion(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        criterion_resource_name="customers/1234567890/sharedCriteria/2079557334~1",
+        expectation="No longer relevant",
+        account_name="boo.ua",
+    )
+
+    result = await pending_change_service.apply_pending_change(
+        ctx=mock_ctx, change_id=proposed["change_id"]
+    )
+
+    mock_shared_criterion_service.remove_shared_criterion.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        criterion_resource_name="customers/1234567890/sharedCriteria/2079557334~1",
+    )
+    assert result["status"] == "applied"
+    mock_fixes_log_service.log_fix.assert_called_once_with(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        fix_id=proposed["change_id"],
+        what="Removed shared criterion",
+        fix_text=proposed["preview"],
+        when=date.today().isoformat(),
+        expectation="No longer relevant",
         account_name="boo.ua",
     )
