@@ -37,11 +37,13 @@ from src.servers.ad_group_server import ad_group_server
 from src.servers.ad_parameter_server import (
     ad_parameter_server,
 )
+from src.servers.ad_resource_server import ad_resource_server
 from src.servers.ad_server import ad_server
 from src.servers.asset_group_asset_server import asset_group_asset_server
 from src.servers.asset_group_server import asset_group_server
 from src.servers.asset_group_signal_server import asset_group_signal_server
 from src.servers.asset_server import asset_server
+from src.servers.asset_set_asset_server import asset_set_asset_server
 from src.servers.asset_set_server import asset_set_server
 from src.servers.audience_insights_server import audience_insights_server
 from src.servers.audience_server import audience_server
@@ -69,6 +71,7 @@ from src.servers.campaign_customizer_server import (
     campaign_customizer_server,
 )
 from src.servers.campaign_draft_server import campaign_draft_server
+from src.servers.campaign_group_server import campaign_group_server
 from src.servers.campaign_label_server import campaign_label_server
 from src.servers.campaign_server import campaign_server
 from src.servers.campaign_shared_set_server import (
@@ -88,12 +91,16 @@ from src.servers.conversion_upload_server import conversion_upload_server
 from src.servers.conversion_value_rule_server import (
     conversion_value_rule_server,
 )
+from src.servers.conversion_value_rule_set_server import (
+    conversion_value_rule_set_server,
+)
 from src.servers.custom_audience_server import custom_audience_server
 from src.servers.custom_conversion_goal_server import (
     custom_conversion_goal_server,
 )
 from src.servers.custom_interest_server import custom_interest_server
 from src.servers.customer_asset_server import customer_asset_server
+from src.servers.customer_asset_set_server import customer_asset_set_server
 from src.servers.customer_client_link_server import (
     customer_client_link_server,
 )
@@ -165,6 +172,9 @@ from src.servers.smart_campaign_server import smart_campaign_server
 
 # from src.sdk_servers.extension_feed_item_server import extension_feed_item_sdk_server  # Not available in v20
 from src.servers.user_data_server import user_data_server
+from src.servers.user_list_customer_type_server import (
+    user_list_customer_type_server,
+)
 from src.servers.user_list_server import user_list_server
 from src.utils import get_logger, load_dotenv
 
@@ -286,6 +296,7 @@ SERVER_GROUPS = {
         ("ad_group", ad_group_server),
         ("keyword", keyword_server),
         ("ad", ad_server),
+        ("ad_resource", ad_resource_server),
         ("ad_group_ad", ad_group_ad_server),
         ("conversion", conversion_server),
         ("google_ads", google_ads_server),
@@ -298,11 +309,13 @@ SERVER_GROUPS = {
         ("asset_group_asset", asset_group_asset_server),
         ("asset_group_signal", asset_group_signal_server),
         ("asset_set", asset_set_server),
+        ("asset_set_asset", asset_set_asset_server),
         ("ad_group_asset", ad_group_asset_server),
         ("ad_group_asset_set", ad_group_asset_set_server),
         ("campaign_asset", campaign_asset_server),
         ("campaign_asset_set", campaign_asset_set_server),
         ("customer_asset", customer_asset_server),
+        ("customer_asset_set", customer_asset_set_server),
     ],
     "targeting": [
         ("campaign_criterion", campaign_criterion_server),
@@ -313,6 +326,7 @@ SERVER_GROUPS = {
         ("custom_interest", custom_interest_server),
         ("custom_audience", custom_audience_server),
         ("user_list", user_list_server),
+        ("user_list_customer_type", user_list_customer_type_server),
     ],
     "bidding": [
         ("bidding_strategy", bidding_strategy_server),
@@ -347,6 +361,7 @@ SERVER_GROUPS = {
         ("conversion_upload", conversion_upload_server),
         ("conversion_adjustment_upload", conversion_adjustment_upload_server),
         ("conversion_value_rule", conversion_value_rule_server),
+        ("conversion_value_rule_set", conversion_value_rule_set_server),
         ("conversion_custom_variable", conversion_custom_variable_server),
         ("conv_goal_config", conversion_goal_campaign_config_server),
         ("custom_conversion_goal", custom_conversion_goal_server),
@@ -358,6 +373,7 @@ SERVER_GROUPS = {
     "organization": [
         ("label", label_server),
         ("campaign_label", campaign_label_server),
+        ("campaign_group", campaign_group_server),
         ("ad_group_label", ad_group_label_server),
         ("ad_group_ad_label", ad_group_ad_label_server),
         ("ad_group_criterion_label", ad_group_criterion_label_server),

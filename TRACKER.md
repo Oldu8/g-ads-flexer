@@ -1,5 +1,111 @@
 # Google Ads MCP Service Implementation Tracker
 
+## 🚧 2026-09-03 — Gap-closure drive started: implement all remaining ❌ services for full 1:1 coverage
+
+User's call after the negative-keywords work below: now that propose/apply
+exists as a mechanism, first **maximize raw API coverage** (close every
+real ❌ in the service list), *then* go back and extend propose/apply to
+cover more of it. This entry is the first batch + the backlog for
+continuing - **read this before picking up more services**, so work
+doesn't get duplicated or done out of order.
+
+**Re-audit finding first:** before writing new code, re-verified every ❌
+against `main.py`'s actual mount list (not just file existence) using the
+real v25 proto service directories
+(`.venv/Lib/site-packages/google/ads/googleads/v25/services/services/*`),
+since CLAUDE.md's own migration note warns the list "has not been
+re-audited... don't assume every ✅ is accurate" - turns out the same is
+true of some ❌ entries. `data_link` was already fully implemented, tested,
+and mounted; the 2026-08-17 audit's single-line grep for
+`get_service("XxxService")` missed `data_link_service.py`'s multi-line call.
+Corrected in place (see the Data Import & Jobs category above) - **no new
+code needed for that one**, but a reminder to double-check `main.py`
+mounts, not just file/grep presence, before assuming a service is missing.
+
+**Batch 1 - six real gaps closed** (all: service class + server wrapper +
+`main.py` mount + tests, same pattern as every prior service in this repo;
+`ruff format` + `pyright` clean, full suite 721 passed / 4 skipped, up from
+694):
+1. `ad` (standalone `AdService.mutate_ads`/`get_ad`) - new
+   `src/services/ad_group/ad_resource_service.py` (`AdResourceService`),
+   mounted as `"ad_resource"`, **not** folded into the existing
+   `ad_service.py`/`"ad"` mount - that file is mislabeled (wraps
+   `AdGroupAdService`, see the Ad Groups & Ads category above) but is
+   already live and tested with its own tool names; rewriting it in place
+   would have broken working tools. Two "ad"-shaped mounts now exist on
+   purpose - documented in both files' docstrings so the next person
+   doesn't "fix" the duplication.
+2. `campaign_group` - `src/services/campaign/campaign_group_service.py`,
+   mounted as `"campaign_group"`. Groups campaigns for reporting/goals -
+   not Performance-Max-specific despite the old tracker note.
+3. `user_list_customer_type` -
+   `src/services/audiences/user_list_customer_type_service.py`, mounted as
+   `"user_list_customer_type"`. Tags a Customer Match list with a
+   lifecycle-stage category (PURCHASERS, CART_ABANDONERS, etc.).
+4. `conversion_value_rule_set` -
+   `src/services/conversions/conversion_value_rule_set_service.py`, mounted
+   as `"conversion_value_rule_set"`. Groups existing conversion value rules
+   (already-✅ `conversion_value_rule_service.py`) by attachment
+   (customer/campaign) and status.
+5. `asset_set_asset` - `src/services/assets/asset_set_asset_service.py`,
+   mounted as `"asset_set_asset"`. Links an individual asset into an asset
+   set (e.g. location/business-data sets for PMax/Local).
+6. `customer_asset_set` -
+   `src/services/assets/customer_asset_set_service.py`, mounted as
+   `"customer_asset_set"`. Links an asset set to the customer account
+   directly (account-wide), vs. `campaign_asset_set` (already ✅).
+
+**Backlog - remaining 19 ❌, in the order they'll likely get picked up**
+(grouped by shape, not by TRACKER category, since that's what determines
+how much new proto-reading each one needs):
+
+*Batch 2 candidates - moderate complexity, single new resource each:*
+- `campaign_goal_config` + `goal` (v25's replacement for the old
+  `campaign_lifecycle_goal`/`customer_lifecycle_goal` - do these **together**,
+  `campaign_goal_config` references a `goal` resource_name.  Deepest part:
+  `GoalSetting`'s three sub-message types (`RetentionGoal`,
+  `NewCustomerAcquisitionGoal`, `LoyaltyRetentionGoal`) - read
+  `goal_setting.py` before starting, budget more time than the batch-1
+  services took.)
+- `smart_campaign_setting` (`get_smart_campaign_status` +
+  `mutate_smart_campaign_settings` - distinct from the already-✅
+  `smart_campaign_suggest`)
+- `keyword_theme_constant` (read-only, `suggest_keyword_theme_constants`)
+- `shareable_preview` (read-only-ish, `generate_shareable_previews`)
+- `asset_group_listing_group_filter` (PMax retail-only - tree-structured
+  listing group filters, only matters with a Merchant Center feed)
+- `you_tube_video_upload` (create/update/remove)
+- `customer_sk_ad_network_conversion_value_schema` (single mutate RPC,
+  iOS/SKAN-specific - low priority unless the account runs iOS app
+  campaigns)
+- `local_services_lead` (`append_lead_conversation`/`provide_lead_feedback`
+  - only relevant if the account runs Local Services ads)
+- `automatically_created_asset_removal` (single special-purpose RPC:
+  `remove_campaign_automatically_created_asset`)
+- `travel_asset_suggestion` (`suggest_travel_assets` - travel vertical only)
+- `asset_generation` (v25 new: `generate_text`/`generate_images` - AI asset
+  generation, unevaluated request/response shape)
+
+*Batch 3 candidates - v25-new "Product Integration & Business Data"
+services, all unevaluated, several look read-only/reporting-shaped rather
+than mutate-shaped (worth confirming per-service before assuming a
+propose/apply-eligible write exists):*
+- `benchmarks` (5 read-only RPCs: list dates/locations/products/sources +
+  `generate_benchmarks_metrics`)
+- `content_creator_insights` (`generate_creator_insights`/
+  `generate_trending_insights`)
+- `incentive` (`fetch_incentive`/`apply_incentive`)
+- `multi_party_auth_review` (`resolve_multi_party_auth_review`)
+- `product_link_invitation` (create/update/remove)
+- `reservation` (`quote_campaigns`/`book_campaigns`)
+- `third_party_app_analytics_link` (`regenerate_shareable_link_id`)
+- `recommendation_subscription` (`mutate_recommendation_subscription`)
+
+**Explicitly not done this entry:** none of the batch-1 services were
+wired into propose/apply - per the user's stated order (coverage first,
+then propose/apply), that's the next phase after the ❌ list is closed out,
+not interleaved with it.
+
 ## ✅ 2026-09-02 (3) — Negative keywords: shared-set add/remove wired into propose/apply
 
 User asked whether negative-keyword create/edit (at least adding words) is
@@ -1035,8 +1141,20 @@ Goal: 1:1 mapping of ALL Google Ads services with full type safety using generat
 
 ## Progress Summary
 - Total Services: 110 (audited against the real `google-ads==31.2.0` v25 service list, `.venv/Lib/site-packages/google/ads/googleads/v25/services/services/` — see 2026-08-17 re-audit note above)
-- ✅ Implemented: 84 (76.4%)
-- ❌ Not Implemented: 26 (23.6%)
+- ✅ Implemented: 91 (82.7%)
+- ❌ Not Implemented: 19 (17.3%)
+
+**2026-09-03 gap-closure update:** started working through the ❌ list for
+full 1:1 coverage (see the dated TRACKER entry below for the batch and the
+remaining backlog). One of the 26 was a stale audit result, not a real gap
+- `data_link` was already fully implemented and mounted; the 2026-08-17
+  audit's single-line grep missed its multi-line `get_service(...)` call.
+  Lesson: re-verify against `main.py`'s actual mount list before trusting
+  a `get_service` grep, not just the service files' existence.
+Six real gaps closed this batch (`ad` via a new `ad_resource_service.py`,
+`campaign_group`, `user_list_customer_type`, `conversion_value_rule_set`,
+`asset_set_asset`, `customer_asset_set`) - 84 + 1 (audit correction) + 6
+(new code) = 91.
 
 **Last Audit Date:** 2026-08-17 (service *list* re-audited by grepping each wrapper's actual `get_service("XxxService")` call, not by filename)
 **Last Migration Date:** 2026-08-11 (mechanical v20→v25 type/import migration, see note above)
@@ -1070,10 +1188,16 @@ service list (110 services) — not filenames, not the old v20 list. See the
 10. ✅ `payments_account` - Payments account management
 11. ✅ `identity_verification` - Identity verification for accounts
 
-### Ad Groups & Ads (13 services) — 12 ✅ / 1 ❌
-1. ❌ `ad` - Standalone Ad resource `mutate_ads`/get. **`src/services/ad_group/ad_service.py`
-   exists but is mislabeled** — it actually calls `AdGroupAdService` (same
-   service `ad_group_ad_service.py` wraps), not `AdService`. Real gap.
+### Ad Groups & Ads (13 services) — 13 ✅ / 0 ❌
+1. ✅ `ad` - Standalone Ad resource `mutate_ads`/`get`. **Fixed 2026-09-03**:
+   `src/services/ad_group/ad_service.py` is still mislabeled (calls
+   `AdGroupAdService`, see item 3 below) and was left alone rather than
+   risk breaking its already-mounted, already-tested tools — the real gap
+   was closed with a separate new file instead:
+   `src/services/ad_group/ad_resource_service.py` (`AdResourceService`),
+   mounted as a distinct `"ad_resource"` key, wrapping the actual
+   `AdService.MutateAds`/`get_ad`-via-GAQL for ad-level field updates
+   (final URLs, tracking template, display URL) independent of ad group.
 2. ✅ `ad_group` - Ad group management
 3. ✅ `ad_group_ad` - Ads within ad groups (this is what `ad_service.py` also
    happens to wrap — duplicate coverage of `ad_group_ad`, not of `ad`)
@@ -1090,7 +1214,7 @@ service list (110 services) — not filenames, not the old v20 list. See the
 12. ✅ `ad_group_label` - Ad group labels
 13. ✅ `ad_parameter` - Ad customizer parameters
 
-### Assets (13 services) — 6 ✅ / 7 ❌
+### Assets (13 services) — 8 ✅ / 5 ❌
 1. ✅ `asset` - Asset management
 2. ❌ `asset_generation` - AI asset generation (new in v25, unevaluated)
 3. ✅ `asset_group` - Asset group management (Performance Max)
@@ -1098,14 +1222,18 @@ service list (110 services) — not filenames, not the old v20 list. See the
 5. ❌ `asset_group_listing_group_filter` - PMax listing group filters
 6. ✅ `asset_group_signal` - Audience signals for asset groups
 7. ✅ `asset_set` - Asset set management
-8. ❌ `asset_set_asset` - Assets within asset sets
+8. ✅ `asset_set_asset` - Assets within asset sets. **Added 2026-09-03**:
+   `src/services/assets/asset_set_asset_service.py`, mounted as
+   `"asset_set_asset"`.
 9. ❌ `automatically_created_asset_removal` - Opt out of auto-created assets (new in v25, unevaluated)
 10. ✅ `customer_asset` - Customer-level assets
-11. ❌ `customer_asset_set` - Customer asset sets
+11. ✅ `customer_asset_set` - Customer asset sets. **Added 2026-09-03**:
+    `src/services/assets/customer_asset_set_service.py`, mounted as
+    `"customer_asset_set"`.
 12. ❌ `travel_asset_suggestion` - Travel-specific asset suggestions
 13. ❌ `you_tube_video_upload` - YouTube video upload for assets (new in v25, unevaluated)
 
-### Audiences & Targeting (10 services) — 8 ✅ / 2 ❌
+### Audiences & Targeting (10 services) — 9 ✅ / 1 ❌
 1. ✅ `audience` - Audience management
 2. ✅ `audience_insights` - Audience insights and analysis
 3. ✅ `custom_audience` - Custom audiences
@@ -1114,7 +1242,9 @@ service list (110 services) — not filenames, not the old v20 list. See the
 6. ✅ `geo_target_constant` - Geographic targeting constants
 7. ✅ `remarketing_action` - Remarketing actions/tags
 8. ✅ `user_list` - User lists for remarketing
-9. ❌ `user_list_customer_type` - Customer types for user lists
+9. ✅ `user_list_customer_type` - Customer types for user lists. **Added
+   2026-09-03**: `src/services/audiences/user_list_customer_type_service.py`,
+   mounted as `"user_list_customer_type"`.
 10. ❌ `keyword_theme_constant` - Keyword theme constants
 
 ### Bidding & Budgets (4 services) — 4 ✅ / 0 ❌
@@ -1126,7 +1256,7 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
 3. ✅ `bidding_strategy` - Bidding strategies
 4. ✅ `campaign_budget` (our `budget_service.py`) - Campaign budget management
 
-### Campaigns (17 services) — 13 ✅ / 4 ❌
+### Campaigns (17 services) — 14 ✅ / 3 ❌
 1. ✅ `campaign` - Campaign management
 2. ✅ `campaign_asset` - Campaign-level assets
 3. ✅ `campaign_asset_set` - Campaign asset sets
@@ -1138,7 +1268,11 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
 9. ❌ `campaign_goal_config` - Campaign lifecycle-goal config (new in v25;
    replaces the old, now-removed `campaign_lifecycle_goal` — don't confuse
    with the two below)
-10. ❌ `campaign_group` - Campaign groups (Performance Max)
+10. ✅ `campaign_group` - Campaign groups (grouping campaigns for reporting/
+    goals - not PMax-specific). **Added 2026-09-03**:
+    `src/services/campaign/campaign_group_service.py`, mounted as
+    `"campaign_group"`. Note: `CampaignGroupStatus` only has ENABLED/REMOVED
+    (no PAUSED) - a campaign group can't be paused, only removed.
 11. ✅ `campaign_label` - Campaign labels
 12. ✅ `campaign_shared_set` - Shared sets for campaigns
 13. ✅ `experiment` - Campaign experiments
@@ -1148,14 +1282,16 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
     `smart_campaign_suggest`, which IS implemented)
 17. ❌ `shareable_preview` - Shareable ad previews
 
-### Conversions (11 services) — 8 ✅ / 3 ❌
+### Conversions (11 services) — 9 ✅ / 2 ❌
 1. ✅ `conversion_action` (our `conversion_service.py`) - Conversion actions
 2. ✅ `conversion_adjustment_upload` - Upload conversion adjustments
 3. ✅ `conversion_custom_variable` - Custom variables for conversions
 4. ✅ `conversion_goal_campaign_config` - Campaign conversion goal configs
 5. ✅ `conversion_upload` - Upload conversions
 6. ✅ `conversion_value_rule` - Value rules for conversions
-7. ❌ `conversion_value_rule_set` - Value rule sets
+7. ✅ `conversion_value_rule_set` - Value rule sets. **Added 2026-09-03**:
+   `src/services/conversions/conversion_value_rule_set_service.py`, mounted
+   as `"conversion_value_rule_set"`.
 8. ✅ `custom_conversion_goal` - Custom conversion goals
 9. ✅ `customer_conversion_goal` - Customer-level conversion goals
 10. ❌ `customer_sk_ad_network_conversion_value_schema` - SK Ad Network schema
@@ -1164,7 +1300,11 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
 
 ### Data Import & Jobs (5 services) — 4 ✅ / 1 ❌
 1. ✅ `batch_job` - Batch job operations
-2. ❌ `data_link` - Data link management
+2. ✅ `data_link` - Data link management (was wrongly marked ❌ - the file,
+   server, and main.py mount all already existed; the 2026-08-17 audit's
+   single-line grep missed its multi-line `get_service(...)` call - see the
+   2026-09-03 gap-closure re-audit note above where this category's header
+   count is also corrected)
 3. ✅ `offline_user_data_job` - Offline user data uploads
 4. ✅ `user_data` - User data operations
 5. ❌ `local_services_lead` - Local services lead data
