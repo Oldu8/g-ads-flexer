@@ -199,6 +199,40 @@ group (`benchmarks`, `content_creator_insights`, `incentive`,
 `multi_party_auth_review`, `product_link_invitation`, `reservation`,
 `third_party_app_analytics_link`, `recommendation_subscription`).
 
+## 🚧 2026-09-03 (5) — Gap-closure batch 5: `automatically_created_asset_removal` closed; `customer_sk_ad_network_conversion_value_schema` deliberately skipped
+
+- `automatically_created_asset_removal` -
+  `src/services/assets/automatically_created_asset_removal_service.py`,
+  mounted as `"automatically_created_asset_removal"`. Single RPC, single
+  operation, no create/update/list - lets an advertiser opt a campaign
+  out of one specific Google-auto-generated asset. 3 new tests.
+
+**Skipped for now, with reason:** `customer_sk_ad_network_conversion_value_schema`
+(iOS/SKAdNetwork conversion measurement) turned out to have a genuinely
+confusing shape when actually read - the entire nested resource
+(`schema`, and every field inside its `SkAdNetworkConversionValueSchema`/
+`FineGrainedConversionValueMappings`/`PostbackMapping`/etc. sub-messages)
+is documented "Output only" in the proto, yet the service exposes an
+`update` operation - same "Output only" docstring is stale/wrong pattern
+already seen once this session with `Goal.goal_type` (see the batch-2
+entry above), but there it was one field, not an entire multi-level tree.
+Given this is also the lowest-value item in the backlog (only matters for
+accounts running iOS app-install campaigns with SKAdNetwork - not this
+project's usual case), deferred rather than guessing at the real
+semantics without a live account to verify against. Left in the backlog
+list below for whoever picks this up next - budget real time to test
+live, don't just trust the docstrings.
+
+Tests: 3 new. `ruff format` + `pyright` clean, full suite 747 passed / 4
+skipped (up from 744). Progress: 96 → **97/110 (88.2%)**, 13 ❌ remain:
+`asset_group_listing_group_filter`, `you_tube_video_upload`,
+`customer_sk_ad_network_conversion_value_schema` (skipped, see above),
+`local_services_lead`, `travel_asset_suggestion`, `asset_generation`,
+then the batch-3 "Product Integration & Business Data" group
+(`benchmarks`, `content_creator_insights`, `incentive`,
+`multi_party_auth_review`, `product_link_invitation`, `reservation`,
+`third_party_app_analytics_link`, `recommendation_subscription`).
+
 ## ✅ 2026-09-02 (3) — Negative keywords: shared-set add/remove wired into propose/apply
 
 User asked whether negative-keyword create/edit (at least adding words) is
@@ -1234,8 +1268,8 @@ Goal: 1:1 mapping of ALL Google Ads services with full type safety using generat
 
 ## Progress Summary
 - Total Services: 110 (audited against the real `google-ads==31.2.0` v25 service list, `.venv/Lib/site-packages/google/ads/googleads/v25/services/services/` — see 2026-08-17 re-audit note above)
-- ✅ Implemented: 96 (87.3%)
-- ❌ Not Implemented: 14 (12.7%)
+- ✅ Implemented: 97 (88.2%)
+- ❌ Not Implemented: 13 (11.8%)
 
 **2026-09-03 gap-closure update:** started working through the ❌ list for
 full 1:1 coverage (see the dated TRACKER entry below for the batch and the
@@ -1307,7 +1341,7 @@ service list (110 services) — not filenames, not the old v20 list. See the
 12. ✅ `ad_group_label` - Ad group labels
 13. ✅ `ad_parameter` - Ad customizer parameters
 
-### Assets (13 services) — 8 ✅ / 5 ❌
+### Assets (13 services) — 9 ✅ / 4 ❌
 1. ✅ `asset` - Asset management
 2. ❌ `asset_generation` - AI asset generation (new in v25, unevaluated)
 3. ✅ `asset_group` - Asset group management (Performance Max)
@@ -1318,7 +1352,13 @@ service list (110 services) — not filenames, not the old v20 list. See the
 8. ✅ `asset_set_asset` - Assets within asset sets. **Added 2026-09-03**:
    `src/services/assets/asset_set_asset_service.py`, mounted as
    `"asset_set_asset"`.
-9. ❌ `automatically_created_asset_removal` - Opt out of auto-created assets (new in v25, unevaluated)
+9. ✅ `automatically_created_asset_removal` - Opt out of auto-created
+   assets. **Added 2026-09-03**:
+   `src/services/assets/automatically_created_asset_removal_service.py`,
+   mounted as `"automatically_created_asset_removal"`. Single RPC
+   (`remove_campaign_automatically_created_asset`) - opts a campaign out
+   of one specific Google-auto-generated asset (headline, image, etc.)
+   without touching any others.
 10. ✅ `customer_asset` - Customer-level assets
 11. ✅ `customer_asset_set` - Customer asset sets. **Added 2026-09-03**:
     `src/services/assets/customer_asset_set_service.py`, mounted as

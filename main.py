@@ -47,6 +47,9 @@ from src.servers.asset_set_asset_server import asset_set_asset_server
 from src.servers.asset_set_server import asset_set_server
 from src.servers.audience_insights_server import audience_insights_server
 from src.servers.audience_server import audience_server
+from src.servers.automatically_created_asset_removal_server import (
+    automatically_created_asset_removal_server,
+)
 from src.servers.batch_job_server import batch_job_server
 from src.servers.bidding_data_exclusion_server import (
     bidding_data_exclusion_server,
@@ -327,6 +330,10 @@ SERVER_GROUPS = {
         ("campaign_asset_set", campaign_asset_set_server),
         ("customer_asset", customer_asset_server),
         ("customer_asset_set", customer_asset_set_server),
+        (
+            "automatically_created_asset_removal",
+            automatically_created_asset_removal_server,
+        ),
     ],
     "targeting": [
         ("campaign_criterion", campaign_criterion_server),
