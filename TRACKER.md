@@ -172,6 +172,33 @@ clean, full suite 737 passed / 4 skipped (up from 732). Progress: 93 → 94/110
 (85.5%), 16 ❌ remain (see the batch-1 entry above for the rest of the list,
 unchanged apart from removing this one).
 
+## 🚧 2026-09-03 (4) — Gap-closure batch 4: `keyword_theme_constant` + `shareable_preview` closed
+
+Two more off the backlog, both small/single-purpose:
+
+- `keyword_theme_constant` -
+  `src/services/audiences/keyword_theme_constant_service.py`, mounted as
+  `"keyword_theme_constant"`. Read-only, single RPC
+  (`suggest_keyword_theme_constants`) mapping free text (e.g. "plumber")
+  to Smart Campaign keyword themes - no mutate operation exists, keyword
+  themes are a fixed Google-maintained taxonomy.
+- `shareable_preview` - `src/services/campaign/shareable_preview_service.py`,
+  mounted as `"shareable_preview"`. Generates a shareable preview URL for
+  a Performance Max asset group (`UI_PREVIEW`) or a YouTube-live-eligible
+  ad (`YOUTUBE_LIVE_PREVIEW`); other ad types return `UNSUPPORTED_AD_TYPE`
+  per the proto docstring. Doesn't touch account data despite being
+  modeled as a mutate-shaped "action" RPC.
+
+Tests: 7 new (3 + 4). `ruff format` + `pyright` clean, full suite 744
+passed / 4 skipped (up from 737). Progress: 94 → **96/110 (87.3%)**, 14 ❌
+remain: `asset_group_listing_group_filter`, `you_tube_video_upload`,
+`customer_sk_ad_network_conversion_value_schema`, `local_services_lead`,
+`automatically_created_asset_removal`, `travel_asset_suggestion`,
+`asset_generation`, then the batch-3 "Product Integration & Business Data"
+group (`benchmarks`, `content_creator_insights`, `incentive`,
+`multi_party_auth_review`, `product_link_invitation`, `reservation`,
+`third_party_app_analytics_link`, `recommendation_subscription`).
+
 ## ✅ 2026-09-02 (3) — Negative keywords: shared-set add/remove wired into propose/apply
 
 User asked whether negative-keyword create/edit (at least adding words) is
@@ -1207,8 +1234,8 @@ Goal: 1:1 mapping of ALL Google Ads services with full type safety using generat
 
 ## Progress Summary
 - Total Services: 110 (audited against the real `google-ads==31.2.0` v25 service list, `.venv/Lib/site-packages/google/ads/googleads/v25/services/services/` — see 2026-08-17 re-audit note above)
-- ✅ Implemented: 94 (85.5%)
-- ❌ Not Implemented: 16 (14.5%)
+- ✅ Implemented: 96 (87.3%)
+- ❌ Not Implemented: 14 (12.7%)
 
 **2026-09-03 gap-closure update:** started working through the ❌ list for
 full 1:1 coverage (see the dated TRACKER entry below for the batch and the
@@ -1299,7 +1326,7 @@ service list (110 services) — not filenames, not the old v20 list. See the
 12. ❌ `travel_asset_suggestion` - Travel-specific asset suggestions
 13. ❌ `you_tube_video_upload` - YouTube video upload for assets (new in v25, unevaluated)
 
-### Audiences & Targeting (10 services) — 9 ✅ / 1 ❌
+### Audiences & Targeting (10 services) — 10 ✅ / 0 ❌
 1. ✅ `audience` - Audience management
 2. ✅ `audience_insights` - Audience insights and analysis
 3. ✅ `custom_audience` - Custom audiences
@@ -1311,7 +1338,12 @@ service list (110 services) — not filenames, not the old v20 list. See the
 9. ✅ `user_list_customer_type` - Customer types for user lists. **Added
    2026-09-03**: `src/services/audiences/user_list_customer_type_service.py`,
    mounted as `"user_list_customer_type"`.
-10. ❌ `keyword_theme_constant` - Keyword theme constants
+10. ✅ `keyword_theme_constant` - Keyword theme constants. **Added
+    2026-09-03**: `src/services/audiences/keyword_theme_constant_service.py`,
+    mounted as `"keyword_theme_constant"`. Read-only, single RPC
+    (`suggest_keyword_theme_constants`) - keyword themes are a fixed
+    Google-maintained taxonomy, not account-owned data, so there's no
+    mutate operation to wrap.
 
 ### Bidding & Budgets (4 services) — 4 ✅ / 0 ❌
 There is only **one** budget service in v25 (`CampaignBudgetService`); the
@@ -1322,7 +1354,7 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
 3. ✅ `bidding_strategy` - Bidding strategies
 4. ✅ `campaign_budget` (our `budget_service.py`) - Campaign budget management
 
-### Campaigns (17 services) — 16 ✅ / 1 ❌
+### Campaigns (17 services) — 17 ✅ / 0 ❌
 1. ✅ `campaign` - Campaign management
 2. ✅ `campaign_asset` - Campaign-level assets
 3. ✅ `campaign_asset_set` - Campaign asset sets
@@ -1354,7 +1386,13 @@ was wrong — confirmed via `get_service` call in `budget_service.py`.
     status + status-specific details) and `update_smart_campaign_setting`
     (phone, language, landing page, business profile). No create/remove -
     the setting is created implicitly with the Smart campaign itself.
-17. ❌ `shareable_preview` - Shareable ad previews
+17. ✅ `shareable_preview` - Shareable ad previews. **Added 2026-09-03**:
+    `src/services/campaign/shareable_preview_service.py`, mounted as
+    `"shareable_preview"`. Only supports Performance Max asset groups
+    (UI_PREVIEW) and YouTube-live-eligible ads (YOUTUBE_LIVE_PREVIEW) per
+    the proto docstring - other ad types return `UNSUPPORTED_AD_TYPE`.
+    Generates a URL only, doesn't touch account data, but modeled as a
+    mutate-shaped "action" service in the API rather than a search.
 
 ### Conversions (11 services) — 10 ✅ / 1 ❌
 1. ✅ `conversion_action` (our `conversion_service.py`) - Conversion actions

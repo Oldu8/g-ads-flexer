@@ -157,6 +157,9 @@ from src.servers.keyword_plan_campaign_server import (
 from src.servers.keyword_plan_idea_server import keyword_plan_idea_server
 from src.servers.keyword_plan_server import keyword_plan_server
 from src.servers.keyword_server import keyword_server
+from src.servers.keyword_theme_constant_server import (
+    keyword_theme_constant_server,
+)
 from src.servers.label_server import label_server
 from src.servers.offline_user_data_job_server import (
     offline_user_data_job_server,
@@ -170,6 +173,7 @@ from src.servers.reach_plan_server import reach_plan_server
 from src.servers.recommendation_server import recommendation_server
 from src.servers.remarketing_action_server import remarketing_action_server
 from src.servers.search_server import search_server
+from src.servers.shareable_preview_server import shareable_preview_server
 from src.servers.shared_criterion_server import shared_criterion_server
 from src.servers.shared_set_server import shared_set_server
 from src.servers.smart_campaign_server import smart_campaign_server
@@ -334,6 +338,7 @@ SERVER_GROUPS = {
         ("custom_audience", custom_audience_server),
         ("user_list", user_list_server),
         ("user_list_customer_type", user_list_customer_type_server),
+        ("keyword_theme_constant", keyword_theme_constant_server),
     ],
     "bidding": [
         ("bidding_strategy", bidding_strategy_server),
@@ -363,6 +368,7 @@ SERVER_GROUPS = {
         ("recommendation", recommendation_server),
         ("invoice", invoice_server),
         ("audience_insights", audience_insights_server),
+        ("shareable_preview", shareable_preview_server),
     ],
     "conversion": [
         ("conversion_upload", conversion_upload_server),
