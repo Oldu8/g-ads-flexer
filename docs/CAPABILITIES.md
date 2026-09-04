@@ -88,8 +88,28 @@ name/TRACKER category:
 
 ## Extensions (assets)
 
-- ✅ Sitelinks, callouts, structured snippets, call assets - all four
-  types, full create support
+Verified 2026-09-04 by reading `asset_service.py` directly - the resource
+proto has 29 asset-type variants total, most of which aren't "extensions"
+in the classic Ads-UI sense at all (dynamic-remarketing feed assets, Hotel/
+Demand-Gen specific formats, HTML5 upload bundles). Of the ones that are:
+
+- ✅ Sitelinks, callouts, structured snippets, call, price, app, promotion,
+  lead form, location, call-to-action, business message (WhatsApp) - 11
+  types, full create support. Location assets take a Place ID directly
+  (not synced from a linked Business Profile). Lead form assets support
+  predefined fields only (no custom qualifying questions) and webhook
+  delivery only (v25 has no email-delivery option). Promotion assets
+  support percent/money discounts and code/minimum-order triggers, not
+  barcode/QR triggers.
+- ❌ `hotel_callout_asset`, `hotel_property_asset`, `book_on_google_asset`
+  - Hotel campaigns only, real gap if ever needed
+- ❌ `dynamic_*_asset` (education/real-estate/custom/hotels-and-rentals/
+  flights/travel/local/jobs) - Dynamic Remarketing feed assets, a
+  different feature area from extensions, not attempted
+- ❌ `demand_gen_carousel_card_asset`, `youtube_video_list_asset` - Demand
+  Gen ad-format assets, not extensions
+- ❌ `media_bundle_asset`, `page_feed_asset`, `app_deep_link_asset` -
+  HTML5 upload / DSA page-feed / deep-link sub-component, not extensions
 
 ## The pattern worth noticing
 

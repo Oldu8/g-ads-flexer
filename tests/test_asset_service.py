@@ -555,13 +555,354 @@ async def test_create_call_asset(
     assert op.create.call_asset.phone_number == "1234567890"
 
 
+@pytest.mark.asyncio
+async def test_create_price_asset(
+    asset_service: AssetService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Test creating a price asset."""
+    customer_id = "1234567890"
+
+    mock_response = Mock(spec=MutateAssetsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[0].resource_name = f"customers/{customer_id}/assets/301"
+
+    mock_asset_client = asset_service.client  # type: ignore
+    mock_asset_client.mutate_assets.return_value = mock_response  # type: ignore
+
+    expected = {"results": [{"resource_name": f"customers/{customer_id}/assets/301"}]}
+
+    with patch(
+        "src.services.assets.asset_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        result = await asset_service.create_price_asset(
+            ctx=mock_ctx,
+            customer_id=customer_id,
+            price_type="SERVICES",
+            language_code="en",
+            price_qualifier="FROM",
+            price_offerings=[
+                {
+                    "header": "Basic",
+                    "description": "Basic plan",
+                    "price": 19.99,
+                    "currency_code": "USD",
+                    "final_url": "https://example.com/basic",
+                    "unit": "PER_MONTH",
+                },
+                {
+                    "header": "Pro",
+                    "description": "Pro plan",
+                    "price": 49.99,
+                    "currency_code": "USD",
+                    "final_url": "https://example.com/pro",
+                },
+                {
+                    "header": "Enterprise",
+                    "description": "Enterprise plan",
+                    "price": 199.99,
+                    "currency_code": "USD",
+                    "final_url": "https://example.com/enterprise",
+                },
+            ],
+        )
+
+    assert result == expected
+    request = mock_asset_client.mutate_assets.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.create.type_ == AssetTypeEnum.AssetType.PRICE
+    price_asset = op.create.price_asset
+    assert price_asset.language_code == "en"
+    assert len(price_asset.price_offerings) == 3
+    first = price_asset.price_offerings[0]
+    assert first.header == "Basic"
+    assert first.price.currency_code == "USD"
+    assert first.price.amount_micros == 19_990_000
+
+
+@pytest.mark.asyncio
+async def test_create_app_asset(
+    asset_service: AssetService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Test creating an app asset."""
+    customer_id = "1234567890"
+
+    mock_response = Mock(spec=MutateAssetsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[0].resource_name = f"customers/{customer_id}/assets/302"
+
+    mock_asset_client = asset_service.client  # type: ignore
+    mock_asset_client.mutate_assets.return_value = mock_response  # type: ignore
+
+    expected = {"results": [{"resource_name": f"customers/{customer_id}/assets/302"}]}
+
+    with patch(
+        "src.services.assets.asset_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        result = await asset_service.create_app_asset(
+            ctx=mock_ctx,
+            customer_id=customer_id,
+            app_id="com.android.example",
+            app_store="GOOGLE_APP_STORE",
+            link_text="Get the app",
+        )
+
+    assert result == expected
+    request = mock_asset_client.mutate_assets.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.create.type_ == AssetTypeEnum.AssetType.MOBILE_APP
+    assert op.create.mobile_app_asset.app_id == "com.android.example"
+    assert op.create.mobile_app_asset.link_text == "Get the app"
+
+
+@pytest.mark.asyncio
+async def test_create_promotion_asset_percent_off(
+    asset_service: AssetService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Test creating a promotion asset with a percent-off discount."""
+    customer_id = "1234567890"
+
+    mock_response = Mock(spec=MutateAssetsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[0].resource_name = f"customers/{customer_id}/assets/303"
+
+    mock_asset_client = asset_service.client  # type: ignore
+    mock_asset_client.mutate_assets.return_value = mock_response  # type: ignore
+
+    expected = {"results": [{"resource_name": f"customers/{customer_id}/assets/303"}]}
+
+    with patch(
+        "src.services.assets.asset_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        result = await asset_service.create_promotion_asset(
+            ctx=mock_ctx,
+            customer_id=customer_id,
+            promotion_target="Site-wide sale",
+            percent_off=20,
+            promotion_code="SAVE20",
+        )
+
+    assert result == expected
+    request = mock_asset_client.mutate_assets.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.create.type_ == AssetTypeEnum.AssetType.PROMOTION
+    promo = op.create.promotion_asset
+    assert promo.percent_off == 20
+    assert promo.promotion_code == "SAVE20"
+
+
+@pytest.mark.asyncio
+async def test_create_promotion_asset_requires_discount(
+    asset_service: AssetService,
+    mock_ctx: Context,
+) -> None:
+    """Test that omitting both discount types raises."""
+    with pytest.raises(Exception) as exc_info:
+        await asset_service.create_promotion_asset(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            promotion_target="Site-wide sale",
+        )
+
+    assert "percent_off" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_create_lead_form_asset(
+    asset_service: AssetService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Test creating a lead form asset."""
+    customer_id = "1234567890"
+
+    mock_response = Mock(spec=MutateAssetsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[0].resource_name = f"customers/{customer_id}/assets/304"
+
+    mock_asset_client = asset_service.client  # type: ignore
+    mock_asset_client.mutate_assets.return_value = mock_response  # type: ignore
+
+    expected = {"results": [{"resource_name": f"customers/{customer_id}/assets/304"}]}
+
+    with patch(
+        "src.services.assets.asset_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        result = await asset_service.create_lead_form_asset(
+            ctx=mock_ctx,
+            customer_id=customer_id,
+            business_name="Acme Inc",
+            call_to_action_type="SIGN_UP",
+            call_to_action_description="Get a free quote",
+            headline="Request a quote",
+            description="Tell us about your project",
+            privacy_policy_url="https://example.com/privacy",
+            field_input_types=["FULL_NAME", "EMAIL", "PHONE_NUMBER"],
+            webhook_url="https://example.com/webhook",
+            webhook_secret="s3cr3t",
+        )
+
+    assert result == expected
+    request = mock_asset_client.mutate_assets.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.create.type_ == AssetTypeEnum.AssetType.LEAD_FORM
+    lead_form = op.create.lead_form_asset
+    assert lead_form.business_name == "Acme Inc"
+    assert len(lead_form.fields) == 3
+    assert len(lead_form.delivery_methods) == 1
+    assert (
+        lead_form.delivery_methods[0].webhook.advertiser_webhook_url
+        == "https://example.com/webhook"
+    )
+    assert lead_form.delivery_methods[0].webhook.google_secret == "s3cr3t"
+
+
+@pytest.mark.asyncio
+async def test_create_location_asset(
+    asset_service: AssetService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Test creating a location asset."""
+    customer_id = "1234567890"
+
+    mock_response = Mock(spec=MutateAssetsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[0].resource_name = f"customers/{customer_id}/assets/305"
+
+    mock_asset_client = asset_service.client  # type: ignore
+    mock_asset_client.mutate_assets.return_value = mock_response  # type: ignore
+
+    expected = {"results": [{"resource_name": f"customers/{customer_id}/assets/305"}]}
+
+    with patch(
+        "src.services.assets.asset_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        result = await asset_service.create_location_asset(
+            ctx=mock_ctx,
+            customer_id=customer_id,
+            place_id="ChIJ123abc",
+        )
+
+    assert result == expected
+    request = mock_asset_client.mutate_assets.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.create.type_ == AssetTypeEnum.AssetType.LOCATION
+    location = op.create.location_asset
+    assert location.place_id == "ChIJ123abc"
+    from google.ads.googleads.v25.enums.types.location_ownership_type import (
+        LocationOwnershipTypeEnum,
+    )
+
+    assert (
+        location.location_ownership_type
+        == LocationOwnershipTypeEnum.LocationOwnershipType.BUSINESS_OWNER
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_call_to_action_asset(
+    asset_service: AssetService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Test creating a call-to-action asset."""
+    customer_id = "1234567890"
+
+    mock_response = Mock(spec=MutateAssetsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[0].resource_name = f"customers/{customer_id}/assets/306"
+
+    mock_asset_client = asset_service.client  # type: ignore
+    mock_asset_client.mutate_assets.return_value = mock_response  # type: ignore
+
+    expected = {"results": [{"resource_name": f"customers/{customer_id}/assets/306"}]}
+
+    with patch(
+        "src.services.assets.asset_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        result = await asset_service.create_call_to_action_asset(
+            ctx=mock_ctx,
+            customer_id=customer_id,
+            call_to_action="SHOP_NOW",
+        )
+
+    assert result == expected
+    request = mock_asset_client.mutate_assets.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.create.type_ == AssetTypeEnum.AssetType.CALL_TO_ACTION
+
+    from google.ads.googleads.v25.enums.types.call_to_action_type import (
+        CallToActionTypeEnum,
+    )
+
+    assert (
+        op.create.call_to_action_asset.call_to_action
+        == CallToActionTypeEnum.CallToActionType.SHOP_NOW
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_business_message_asset(
+    asset_service: AssetService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Test creating a business message (WhatsApp) asset."""
+    customer_id = "1234567890"
+
+    mock_response = Mock(spec=MutateAssetsResponse)
+    mock_response.results = [Mock()]
+    mock_response.results[0].resource_name = f"customers/{customer_id}/assets/307"
+
+    mock_asset_client = asset_service.client  # type: ignore
+    mock_asset_client.mutate_assets.return_value = mock_response  # type: ignore
+
+    expected = {"results": [{"resource_name": f"customers/{customer_id}/assets/307"}]}
+
+    with patch(
+        "src.services.assets.asset_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        result = await asset_service.create_business_message_asset(
+            ctx=mock_ctx,
+            customer_id=customer_id,
+            starter_message="Hi! How can we help?",
+            whatsapp_country_code="US",
+            whatsapp_phone_number="1234567890",
+            call_to_action_type="GET_QUOTE",
+            call_to_action_description="Ask about pricing",
+        )
+
+    assert result == expected
+    request = mock_asset_client.mutate_assets.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.create.type_ == AssetTypeEnum.AssetType.BUSINESS_MESSAGE
+    message_asset = op.create.business_message_asset
+    assert message_asset.whatsapp_info.phone_number == "1234567890"
+    assert (
+        message_asset.call_to_action.call_to_action_description == "Ask about pricing"
+    )
+
+
 def test_register_asset_tools() -> None:
     """Test tool registration."""
     mock_mcp = Mock()
     service = register_asset_tools(mock_mcp)
 
     assert isinstance(service, AssetService)
-    assert mock_mcp.tool.call_count == 8  # type: ignore
+    assert mock_mcp.tool.call_count == 15  # type: ignore
 
     registered_tools = [call[0][0] for call in mock_mcp.tool.call_args_list]  # type: ignore
     tool_names = [tool.__name__ for tool in registered_tools]
@@ -574,6 +915,13 @@ def test_register_asset_tools() -> None:
         "create_callout_asset",
         "create_structured_snippet_asset",
         "create_call_asset",
+        "create_price_asset",
+        "create_app_asset",
+        "create_promotion_asset",
+        "create_lead_form_asset",
+        "create_location_asset",
+        "create_call_to_action_asset",
+        "create_business_message_asset",
         "search_assets",
     ]
 

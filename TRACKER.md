@@ -233,6 +233,49 @@ then the batch-3 "Product Integration & Business Data" group
 `multi_party_auth_review`, `product_link_invitation`, `reservation`,
 `third_party_app_analytics_link`, `recommendation_subscription`).
 
+## ✅ 2026-09-04 — Extensions gap closed: 7 more asset types added to `asset_service.py`
+
+User asked "у нас есть доступ к созданию расширений — доп. ссылки, цены,
+уточнения?" (do we have extension creation - sitelinks, price, callouts?).
+Sitelinks/callouts were already ✅; price was not, and checking further
+turned up 6 more real gaps of the same shape. **Important distinction from
+every other entry in this file**: this isn't a missing *service* - the
+whole `AssetService` was already ✅ (`asset` in the service list above) -
+it's missing *asset-type variants* within an already-implemented service.
+The per-service ❌/✅ audit this file tracks would never have caught this;
+it only surfaced because the user asked about a specific capability.
+Worth remembering as a blind spot: "service exists" ≠ "every sub-type of
+that service is wrapped."
+
+Audited all 29 `oneof` asset-type variants on the `Asset` resource against
+what `asset_service.py` actually wraps, then scoped to the ones that are
+genuinely "extensions" in the classic Ads-UI sense (not Dynamic
+Remarketing feed assets, not Hotel/Demand-Gen specific formats, not HTML5
+upload bundles - those are different feature areas entirely, see the
+`docs/CAPABILITIES.md` Extensions section for the full excluded list with
+reasoning). **7 new `create_*_asset` methods added** to the existing
+`AssetService`/`create_asset_tools` (no new service/mount needed, all
+under `AssetService.MutateAssets` already):
+- `create_price_asset` - the one asked about; 3-8 offerings, each with
+  header/description/price/URL
+- `create_app_asset` - Apple/Google app store link
+- `create_promotion_asset` - percent-off or money-off discount, with
+  either a promo code or minimum-order trigger (barcode/QR triggers not
+  wrapped - rare, complex nested types)
+- `create_lead_form_asset` - predefined fields only (no custom
+  qualifying questions/single-choice answers), webhook delivery only
+  (v25's `LeadFormDeliveryMethod` has no email option at all, confirmed
+  from the proto - not a limitation we imposed)
+- `create_location_asset` - by Place ID directly
+- `create_call_to_action_asset` - trivial single-enum asset
+- `create_business_message_asset` - WhatsApp provider only (Facebook
+  Messenger/Zalo share the identical shape, add on request)
+
+8 new tests (7 create + 1 validation-error case for promotion's
+required-discount check), plus the existing `test_register_asset_tools`
+count assertion updated (8 → 15 tools). `ruff format` + `pyright` clean,
+full suite 755 passed / 4 skipped (up from 747).
+
 ## ✅ 2026-09-02 (3) — Negative keywords: shared-set add/remove wired into propose/apply
 
 User asked whether negative-keyword create/edit (at least adding words) is

@@ -2,7 +2,7 @@
   "mcpServers": {
     "google-ads": {
       "command": "uv",
-      "args": ["run", "python", "main.py", "--groups", "core,reporting,targeting"]
+      "args": ["run", "python", "main.py", "--groups", "core,reporting,targeting,assets"]
     }
   }
 }
