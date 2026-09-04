@@ -206,3 +206,6 @@ CLAUDE.local.md
 
 # Local account snapshots (real business data - keep out of git by default)
 snapshots/
+
+# Scratch/output files (audit dumps, keyword lists, etc.) - see CLAUDE.md RULES #4
+tmp/

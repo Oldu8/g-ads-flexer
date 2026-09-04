@@ -21,6 +21,7 @@ here are some high level resources:
 1. we use `uv` for pagkage management, see `pyproject.toml` for details & configs.
 2. after changes run `uv run ruff format .`and `uv run pyright`
 3. Our goal is to provide 1:1 mapping to ALL google ads services, and wrap them to MCP tools for LLMs to interact with. You can use files to help you track progress. use the API reference or the google-ads python codebase to read all the services available, and implement it. For each service, implement tests and make sure they pass. The implementation should be FULLY typed, using generated types from google ads v20 services.
+4. Never write scratch/output text files (audit dumps, keyword lists, campaign reports, ID lists, etc.) into the project root - they end up as untracked clutter in `git status` every session. Write them to `./tmp/` instead (create it if missing), named `YYYY-MM-DD_<account-or-campaign>_<what-it-is>.txt` (e.g. `2026-09-04_boo-ua_keyword-audit-90d.txt`) so a later session can tell what a file is and reuse it without opening it first. `./tmp/` is gitignored - never `git add` anything from it.
 
 ## CURRENT TASK
 
