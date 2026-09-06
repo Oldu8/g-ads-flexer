@@ -28,9 +28,11 @@ it does, not by assuming from the service name. Keep it that way - a stale
 
 - ✅ Search, Display, Shopping, Video, Performance Max campaign creation,
   full bidding-strategy support, campaign budgets
-- ❌ `campaign_group` (grouping campaigns for reporting/goals),
-  `campaign_goal_config` (lifecycle goals), `smart_campaign_setting`,
-  `shareable_preview` - real gaps, all low-priority for a standard build
+- ✅ `campaign_group` (grouping campaigns for reporting/goals),
+  `campaign_goal_config` + `goal` (customer lifecycle-optimization goals),
+  `smart_campaign_setting` (live Smart campaign status/settings),
+  `shareable_preview` (PMax/YouTube-live preview URLs) - closed 2026-09-03,
+  all narrow/rarely-needed for a standard build but no longer gaps
 
 ## Performance Max, specifically
 
@@ -59,11 +61,13 @@ name/TRACKER category:
 ## Audiences, segments, interests
 
 - ✅ Custom audiences, custom interests, user lists (including **Customer
-  Match** - uploading email/phone lists), audience insights research
+  Match** - uploading email/phone lists), audience insights research,
+  `user_list_customer_type` (lifecycle-stage tags like PURCHASERS/
+  CART_ABANDONERS), `keyword_theme_constant` (Smart Campaign keyword-theme
+  suggestions) - closed 2026-09-03
 - 🌐 A remarketing list's *definition* is created via API, but it only
   fills with real visitors once the site's Google tag is live and actually
   firing - always manual, same as conversions above
-- ❌ `user_list_customer_type`, `keyword_theme_constant` - narrow gaps
 
 ## Keyword research & grouping
 
@@ -110,6 +114,23 @@ Demand-Gen specific formats, HTML5 upload bundles). Of the ones that are:
   Gen ad-format assets, not extensions
 - ❌ `media_bundle_asset`, `page_feed_asset`, `app_deep_link_asset` -
   HTML5 upload / DSA page-feed / deep-link sub-component, not extensions
+
+## Safety / review layer (propose → apply)
+
+This is a different axis from everything above - it's not about whether a
+capability exists, but whether *using* it goes through a human-reviewed
+preview step first (`pending_change_service.py`: propose builds a preview
+and never calls the API; apply is the only path that does, and only for a
+"pending" record). As of 2026-09-04 this covers exactly **7 kinds**: add
+keywords (ad-group level), campaign budget update, campaign bid-target
+update, create/remove a rule-based user list, add/remove shared-set
+negative keywords. **Everything else in this file marked ✅ is called
+directly, with no review checkpoint** - true for every campaign/ad-group/
+ad/extension/audience *creation* call, which is most of what a
+greenfield-account build actually does. Extending review coverage further
+is tracked separately, deliberately *after* closing raw API gaps (see
+TRACKER.md's 2026-09-03 entries) - don't assume "✅ ready now" above implies
+"safe to let an LLM call unattended," they're independent questions.
 
 ## The pattern worth noticing
 
