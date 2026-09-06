@@ -1,0 +1,11 @@
+{
+  "_comment": "Copy to snapshots/account_registry.json (already gitignored) and fill in real accounts. Maps a short alias -> {customer_id, name}. Every tool's customer_id parameter accepts either the alias or the raw numeric id transparently (see src/utils.py's format_customer_id). Only works for accounts reachable with this deployment's single set of API credentials (same manager/login_customer_id) - a genuinely separate developer token/OAuth client still needs its own .env/process, see docs/ACCOUNT_SWITCHING.md and docs/CLIENT_ONBOARDING.md.",
+  "boo-ua": {
+    "customer_id": "5690318342",
+    "name": "boo.ua (main account)"
+  },
+  "new-project": {
+    "customer_id": "REPLACE_ME",
+    "name": "New project - fill in once the account is linked and its customer_id is known"
+  }
+}

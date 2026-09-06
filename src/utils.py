@@ -43,18 +43,37 @@ def load_dotenv(dotenv_path: str = ".env") -> None:
 
 
 def format_customer_id(customer_id: str) -> str:
-    """Format a customer ID by removing hyphens.
+    """Format a customer ID, resolving a registered account alias first.
 
-    Google Ads customer IDs can be provided with or without hyphens.
-    This function ensures they are in the format expected by the API (without hyphens).
+    Google Ads customer IDs can be provided with or without hyphens. This
+    also transparently accepts a short account alias (e.g. "boo-ua")
+    registered via `account_registry_service.py` instead of the raw
+    numeric id - resolved here, the one place every service already calls
+    before touching `customer_id`, so every existing tool gets alias
+    support with no signature changes anywhere. See
+    `docs/ACCOUNT_SWITCHING.md` for the full picture.
 
     Args:
-        customer_id: The customer ID with or without hyphens (e.g., "123-456-7890" or "1234567890")
+        customer_id: A raw customer ID ("123-456-7890" or "1234567890"),
+            or a registered account alias (e.g. "boo-ua")
 
     Returns:
-        The customer ID without hyphens (e.g., "1234567890")
+        The resolved customer ID without hyphens (e.g., "1234567890")
     """
-    return customer_id.replace("-", "")
+    resolved = _resolve_account_alias(customer_id)
+    target = resolved if resolved is not None else customer_id
+    return target.replace("-", "")
+
+
+def _resolve_account_alias(value: str) -> Optional[str]:
+    """Return the numeric customer_id for `value` if it's a registered
+    account alias, else None (meaning: treat `value` as a raw customer_id
+    unchanged). Never raises - a missing/empty registry just means no
+    aliases are registered yet.
+    """
+    from src.services.review.account_registry_store import AccountRegistryStore
+
+    return AccountRegistryStore().resolve(value)
 
 
 def resolve_enum(enum_class: Any, value: str, param_name: str = "parameter") -> Any:

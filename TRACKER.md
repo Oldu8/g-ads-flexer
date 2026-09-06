@@ -1,5 +1,51 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-09-06 — Multi-account support: alias registry, no credential changes
+
+User is starting a second project (its own Google Ads account) while
+continuing boo.ua, wants to switch between them by alias through the same
+running MCP server, and wants to move towards connecting an MCP client
+directly rather than through the VS Code extension. Full design rationale
+and the per-new-account checklist now live in
+[`docs/ACCOUNT_SWITCHING.md`](./docs/ACCOUNT_SWITCHING.md) - read that
+before touching this area again, especially before assuming this also
+solves genuinely separate credentials (it doesn't - only accounts
+reachable under this deployment's single manager account/dev-token/OAuth
+client, still `sdk_client.py`'s process-wide singleton, untouched).
+
+**What shipped:** `format_customer_id()` (`src/utils.py`) - the one
+function every service already calls before touching `customer_id` - now
+resolves a short registered alias (e.g. `"boo-ua"`) to its real numeric
+customer_id first, falling back to the raw input otherwise. One function
+changed, not the ~100 files that call it - every existing tool's
+`customer_id` parameter already accepts an alias with zero signature
+changes.
+
+- `src/services/review/account_registry_store.py`
+  (`AccountRegistryStore`) - JSON-file-backed `alias -> {customer_id,
+  name}` map, same pattern as `pending_change_store.py`. Storage:
+  `snapshots/account_registry.json` (already gitignored via the existing
+  `snapshots/` rule).
+- `src/services/review/account_registry_service.py` - three MCP tools,
+  mounted as `"account_registry"`: `list_accounts`, `add_account`,
+  `remove_account`. Pure local config, no Google Ads API calls - doesn't
+  go through propose/apply (that gate is for live-account changes) and
+  takes effect immediately, same as any other local-file operation here.
+- `account_registry.example.json` (root, template) /
+  `snapshots/account_registry.json` (real file, pre-populated with
+  `boo-ua` -> `5690318342`).
+- Deliberately **not** a stateful "current account" - explained in the doc
+  above (concurrency risk if this server ever serves more than one MCP
+  connection at once, plus a conversation already tracks "which account"
+  for free without a server-side global).
+
+18 new tests (`test_utils.py` for the alias-resolution behavior,
+`test_account_registry_store.py`, `test_account_registry_service.py`),
+all carefully isolated from the real `snapshots/account_registry.json` via
+`tmp_path`/`monkeypatch` so they can't be broken by real registry
+contents (or vice versa). `ruff format` + `pyright` clean, full suite 773
+passed / 4 skipped (up from 755).
+
 ## 🚧 2026-09-03 — Gap-closure drive started: implement all remaining ❌ services for full 1:1 coverage
 
 User's call after the negative-keywords work below: now that propose/apply

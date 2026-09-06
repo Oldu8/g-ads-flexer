@@ -15,6 +15,7 @@ from src.servers.account_budget_proposal_server import (
     account_budget_proposal_server,
 )
 from src.servers.account_link_server import account_link_server
+from src.servers.account_registry_server import account_registry_server
 from src.servers.ad_group_ad_label_server import ad_group_ad_label_server
 from src.servers.ad_group_ad_server import ad_group_ad_server
 from src.servers.ad_group_asset_server import ad_group_asset_server
@@ -413,6 +414,7 @@ SERVER_GROUPS = {
         ("ad_parameter", ad_parameter_server),
     ],
     "account": [
+        ("account_registry", account_registry_server),
         ("customer_user_access", customer_user_access_server),
         ("access_invite", customer_user_access_invitation_server),
         ("customer_client_link", customer_client_link_server),
