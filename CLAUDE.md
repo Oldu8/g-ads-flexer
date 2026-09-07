@@ -1,48 +1,42 @@
-## Objective
+## This is a monorepo
 
-You're working on google-ads-mcp project, it's a MCP(model context protocal) server that wraps the google ads api for LLM's interaction. You will use the tools to search, fetch web page contents to read the docs, and implement.
+Two independent projects, different stacks, sharing one Postgres database
+(Supabase-hosted) as their only integration point — see
+[`docs/PLATFORM_ARCHITECTURE.md`](./docs/PLATFORM_ARCHITECTURE.md) for the
+full plan (multi-tenant design, DB schema, auth flow, phased rollout)
+before working on either side.
 
-### about google ads api
+- **`mcp-server/`** — Python. The Google Ads MCP server: ~100 MCP tools
+  wrapping the Google Ads API 1:1 (protobuf-typed), plus (in progress) the
+  multi-tenant HTTP entrypoint that resolves per-account Google Ads
+  credentials from Postgres per request. Has its own `CLAUDE.md` with the
+  detailed rules/current task for this side — **read that before touching
+  anything under `mcp-server/`**.
+- **`web/`** — Next.js (not started yet). The product surface: landing
+  page, pricing, blog (SEO), terms/privacy, login (Google OAuth via
+  Auth.js — same grant used for both identifying the user and getting
+  Google Ads API access), account dashboard, MCP address + bearer-token
+  issuance. Owns the Postgres schema/migrations.
 
-google ads offers it's own client sdk as well as REST api. Client one has python sdk, built on top of protobuf schema. REST api does not have any existing openapi specs but referenec docs.
-we decided to go with python sdk, since it's well maintained and does most of the heavy lifting, i.e. retries, pagination, etc.
+## Why two stacks, one database
 
-## resources
+Recorded 2026-09-07: the Python side is the Google Ads SDK engine and
+can't be anything but Python. The web/product side is marketing-heavy
+(SEO blog, landing pages) and login/dashboard UI — squarely Next.js
+territory, and the user's own stack. Rather than force one language to do
+both jobs badly, each repo does its own job well and they meet only at
+the database: Next.js issues bearer tokens into a Postgres table when a
+user connects an account, the Python MCP server's own `TokenVerifier`
+(no JWT, no Supabase Auth dependency — a plain DB lookup) checks
+incoming requests against the same table. Neither side calls the other's
+API directly for this.
 
-here are some high level resources:
+## Root-level things
 
-1. read the `./refs/googleads.llms.txt` for resources related to google ads api
-2. use the `./refs/fastmcp.llms.txt` for full list of docs on how mcp server works.
-3. use the cloudflare tools fetch urls via md/html, which is cleaner and easy to digest.
-4. you have access to `google-ads-python` which contains source code for the python sdk, as well as all the types generated from protocol buffers.
-
-## RULES
-
-1. we use `uv` for pagkage management, see `pyproject.toml` for details & configs.
-2. after changes run `uv run ruff format .`and `uv run pyright`
-3. Our goal is to provide 1:1 mapping to ALL google ads services, and wrap them to MCP tools for LLMs to interact with. You can use files to help you track progress. use the API reference or the google-ads python codebase to read all the services available, and implement it. For each service, implement tests and make sure they pass. The implementation should be FULLY typed, using generated types from google ads v20 services.
-4. Never write scratch/output text files (audit dumps, keyword lists, campaign reports, ID lists, etc.) into the project root - they end up as untracked clutter in `git status` every session. Write them to `./tmp/` instead (create it if missing), named `YYYY-MM-DD_<account-or-campaign>_<what-it-is>.txt` (e.g. `2026-09-04_boo-ua_keyword-audit-90d.txt`) so a later session can tell what a file is and reuse it without opening it first. `./tmp/` is gitignored - never `git add` anything from it.
-
-## CURRENT TASK
-
-Here is the current task you're working on. Prioritize this over everything else.
-
-We're in the middle of creating MCP tools based on google ads api. We need to ensure 1:1 mapping and fully type safe. You will create a `TRACKER.md`, list down all the existing services in google-ads-python, and then audit the current progress and mark them. Start with everything as "not impl". Next, we will start one by one.
-
-FOR each service, we will using the generated proto buf types, fully annotate the endpoints/operations, and create lightweight tools for MCP. Some existing implementations might exist, but theymight NOT be ideal, since we need to ensure the inputs & outputs are fully using generated types for consistency. After you implement each service, write tests to cover it. Next, move on to next service until we're done. NOTE, we only focus on google ads **V25** api (see below — this was V20 originally; V20 is now sunset), only implement services exist.
-
-**2026-08-11 update — target API version changed from V20 to V25.** V20 was
-sunset by Google on 2026-06-10 and now hard-fails every live call with
-`UNSUPPORTED_VERSION`; this was discovered while validating real credentials
-against the boo.ua account, not as a planned migration. `google-ads` dep was
-bumped to `31.2.0` and all `v20` import paths / `version="v20"` calls in
-`src/` and `tests/` were mechanically replaced with `v25`. Type/shape drift
-between v20 and v25 was fixed only where it broke `pyright` or `pytest` (two
-files: `audience_insights_service.py`, `campaign_service.py`) — the service
-list in `TRACKER.md` itself has **not** been re-audited against what v25
-actually offers. See the migration note at the top of `TRACKER.md` for full
-detail before continuing service-by-service work — don't assume every
-"✅ Implemented" entry is still accurate without spot-checking against the
-current v25 protos.
-
-in the `TRACKER.md`, note down the task you're working on and high level steps. so that other agents can pick it up from you easily w/ context.
+- `.mcp.json` — launches the Python MCP server via
+  `uv run --directory mcp-server python main.py ...` for local Claude
+  Code use. Update the `--directory` flag, not the rest, if this ever
+  needs to point somewhere else.
+- `docs/` (this level) — cross-cutting planning docs that describe the
+  whole platform, not just one side. `mcp-server/docs/` holds the
+  Python-specific ones (capabilities, client onboarding, etc.).

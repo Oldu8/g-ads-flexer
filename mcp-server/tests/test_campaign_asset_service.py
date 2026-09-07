@@ -463,9 +463,7 @@ async def test_remove_asset_from_campaign(
     campaign_id = "9876543210"
     asset_id = "555666777"
     field_type = AssetFieldTypeEnum.AssetFieldType.SITELINK
-    campaign_asset_resource = (
-        f"customers/{customer_id}/campaignAssets/{campaign_id}~{asset_id}~{field_type}"
-    )
+    campaign_asset_resource = f"customers/{customer_id}/campaignAssets/{campaign_id}~{asset_id}~{field_type.name}"
 
     # Create mock response
     mock_response = Mock(spec=MutateCampaignAssetsResponse)

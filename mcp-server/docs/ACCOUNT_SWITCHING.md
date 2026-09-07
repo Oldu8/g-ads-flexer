@@ -1,5 +1,17 @@
 # Working with more than one Google Ads account through one MCP server
 
+**Scope note (2026-09-07):** this is the *local, single-operator*
+mechanism — one trusted person (or one Claude Code session) running
+`main.py` locally, picking an account by alias per call. The hosted,
+multi-tenant product (see
+[`../../docs/PLATFORM_ARCHITECTURE.md`](../../docs/PLATFORM_ARCHITECTURE.md))
+uses a deliberately different mechanism — one MCP address + bearer token
+per account, pinned at the connection rather than passed as a parameter,
+because it has to hold up between tenants who don't trust each other, not
+just stay convenient for one person. Don't conflate the two or try to
+unify them; they solve different problems. Everything below is about the
+local case only.
+
 Recorded 2026-09-06: the user is about to start a second project (its own
 Google Ads account) while continuing to run boo.ua through the same
 deployment, and wants to do it by talking to an MCP client directly

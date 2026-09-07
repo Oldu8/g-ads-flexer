@@ -311,8 +311,15 @@ class CampaignAssetService:
         """
         try:
             customer_id = format_customer_id(customer_id)
+            # Campaign asset resource names embed the field type's enum
+            # *name* (e.g. "SITELINK"), not its numeric value. `field_type`
+            # is a proto-plus IntEnum member - since Python 3.11,
+            # IntEnum.__str__ prints the bare int, so an f-string of the
+            # member itself (previously `{field_type}` here) silently
+            # embedded e.g. "13" instead of "SITELINK". Use `.name` instead.
+            field_type_name = field_type.name
             # Campaign asset resource names use ~ as separator
-            campaign_asset_resource = f"customers/{customer_id}/campaignAssets/{campaign_id}~{asset_id}~{field_type}"
+            campaign_asset_resource = f"customers/{customer_id}/campaignAssets/{campaign_id}~{asset_id}~{field_type_name}"
 
             # Create operation
             operation = CampaignAssetOperation()

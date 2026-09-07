@@ -1,5 +1,42 @@
 # Google Ads MCP Service Implementation Tracker
 
+## 🚧 2026-09-07 — Repo restructured into a monorepo; platform architecture locked in
+
+The user decided to actually build the hosted multi-tenant product
+(previously the deliberately-deferred "V2"). Full design — data model,
+auth (Google OAuth doing double duty, no JWT, no Supabase Auth as
+identity), the two-repo/two-stack split, phased plan, naming
+candidates — is at
+[`../docs/PLATFORM_ARCHITECTURE.md`](../docs/PLATFORM_ARCHITECTURE.md).
+**Read that before touching anything account/credential/multi-tenant
+related in this codebase** - it supersedes `docs/V2_COMMERCIAL_ROADMAP.md`
+(left in place as historical record with a pointer at its top).
+
+**Repo restructuring that happened alongside this:** everything that used
+to live at the repo root now lives under `mcp-server/` (this file
+included) - a new sibling `web/` directory is reserved (currently just a
+placeholder README) for the future Next.js product surface. Root now
+holds only: `.mcp.json` (updated to `uv run --directory mcp-server ...`),
+`.vscode/` (interpreter path updated to `mcp-server/.venv`), `.github/`
+(CI workflow given a `working-directory: mcp-server` default), a new
+monorepo-level `CLAUDE.md`/`AGENTS.md`/`README.md`, and
+`docs/PLATFORM_ARCHITECTURE.md`. Moved with `git mv` (history preserved,
+shows as renames not delete+add). `.venv`/`__pycache__`/`.pytest_cache`/
+`.ruff_cache` were deleted and rebuilt fresh under `mcp-server/` rather
+than moved (venvs don't reliably survive a raw directory move on
+Windows). Verified working from the new location: `uv sync --all-extras`,
+`ruff format --check .`, `pyright`, `pytest` all clean/green from inside
+`mcp-server/`.
+
+**One unrelated pre-existing bug found and fixed along the way** (not
+caused by the move): `tests/test_campaign_asset_service.py::test_remove_asset_from_campaign`
+expected a resource name ending in a raw enum ordinal (`~13`) instead of
+the enum name (`~SITELINK`) - the source (`campaign_asset_service.py`)
+already had a comment explaining exactly this (`IntEnum.__str__` changed
+in Python 3.11+ to print the bare int), but this one test's expected
+value was never updated to match when that fix landed. Fixed the test to
+use `.name`, matching the source's own documented intent.
+
 ## ✅ 2026-09-06 — Multi-account support: alias registry, no credential changes
 
 User is starting a second project (its own Google Ads account) while

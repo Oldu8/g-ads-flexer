@@ -1,4 +1,17 @@
-# V2 commercial roadmap (not being built yet)
+# V2 commercial roadmap (superseded — kept as historical record)
+
+**Superseded 2026-09-07 by
+[`../../docs/PLATFORM_ARCHITECTURE.md`](../../docs/PLATFORM_ARCHITECTURE.md)**
+— the vision below (each client brings full separate Ads API credentials)
+turned out not to be what got built; the actual plan is one MCC per user,
+Google OAuth login doing double duty as identity + Ads-access grant, and a
+two-repo (`mcp-server/` + `web/`) split with Postgres as the only
+integration point. Read that doc instead for anything current. This file
+stays only so the "shared-MCC rejected" reasoning below isn't lost - it's
+still correct context for why the platform doc's data model looks the way
+it does (one MCC per user, not a shared platform-owned MCC).
+
+---
 
 This records the v2 product vision as scoped 2026-08-27, so it isn't lost
 and so near-term decisions can be made with it in mind — **without**
