@@ -97,8 +97,26 @@ users            1 row per Google identity (keyed by OAuth `sub`)
                                             that MCC the user has chosen
                                             to expose
                                             (customer_id, display_name,
-                                             slug, bearer_token, enabled)
+                                             slug, bearer_token, enabled,
+                                             context)
 ```
+
+**TODO, not designed yet — per-account business context.** Add a plain
+text field on `accounts` (working name `context`, cap ~2000 characters)
+where the user describes their business specifics for that account —
+same idea as this repo's own `boo-ua-business-model` memory note (e.g.
+"marketplace reselling pawnshop items, ~10% margin, so ROAS ≠ profit"),
+but per-tenant and stored in the platform instead of in one operator's
+personal memory. Needs, once actually designed:
+- A field in the Phase 2 dashboard to write/edit it
+- A way for the agent to actually see it - likely surfaced as that
+  account's pinned FastMCP mount's `instructions` (dynamic per account,
+  same place `remote_main.py` sets a static `instructions=` today - see
+  "Auth on the MCP server itself" above for the per-account mount this
+  would hang off of), not a tool call the agent has to remember to make
+- Nothing beyond "this needs to exist" decided yet - length limit, where
+  exactly it's injected, whether it's plain text or structured, are all
+  open
 
 **One user = one MCC, not "N cabinets per user."** An earlier version of
 this plan had users connecting multiple MCCs ("cabinets"); cut for now to
@@ -260,3 +278,5 @@ resolve independently without another repo reshuffle.
   the Python side — leaning direct-from-Next.js (it's a read-only Google
   API call, doesn't need the Python SDK), not decided.
 - Product name (see above).
+- Per-account business-context field (see "Data model" above) — noted as
+  needed, not designed.
