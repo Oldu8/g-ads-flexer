@@ -1,0 +1,39 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+context: |
+  Monorepo with two independent projects sharing one Postgres (Supabase) database
+  as their only integration point — see docs/PLATFORM_ARCHITECTURE.md for the full
+  plan before proposing anything cross-cutting.
+  - mcp-server/ (Python): the Google Ads MCP server (~100 MCP tools wrapping the
+    Google Ads API). Has its own CLAUDE.md — read it before proposing changes here.
+  - web/ (Next.js, not started yet): landing/blog/auth/dashboard, owns the Postgres
+    schema/migrations.
+  Neither side calls the other's API directly; they meet only at the DB
+  (bearer tokens issued by web/, checked by mcp-server's TokenVerifier).
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+rules:
+  proposal:
+    - State which side(s) this change touches: mcp-server, web, or both (via the shared DB).
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
