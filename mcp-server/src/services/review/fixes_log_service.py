@@ -101,8 +101,17 @@ class FixesLogService:
             ctx: FastMCP context
             customer_id: The ad account this fix belongs to - determines
                 which sheet the row is written to (one account, one sheet)
-            fix_id: A unique id for this fix (e.g. "F-20260827-01") - needed
-                later to update this same row's review columns
+            fix_id: A proposed id for this fix (e.g. "F-20260827-01") -
+                needed later to update this same row's review columns. If
+                another row already uses it (e.g. a concurrent session on
+                the same account picked the same "F-<today>-01"
+                independently - there's no shared counter, so don't assume
+                you're the only writer today), a letter suffix is added
+                automatically (-> "F-20260827-01b") and a fresh row is
+                appended under that id instead; this never fails and never
+                touches the other row. **Check the returned `fix_id` in the
+                response** - it may differ from what you passed in, and
+                that's the one to use for any later review update
             what: Short label for what changed (the "What" column)
             fix_text: What was actually done (the "Fix" column). **Keep it
                 to 1-2 sentences** - what changed, a count, and the scope
@@ -142,11 +151,12 @@ class FixesLogService:
                 ignored once the sheet's already initialized
 
         Returns:
-            Confirmation with the fix_id and status written
+            Confirmation with the fix_id actually written (may differ from
+            the one passed in - see the `fix_id` arg doc) and status
         """
         _validate_date(when)
         sheet = self._get_sheet(customer_id, account_name)
-        sheet.append_fix(
+        actual_id = sheet.append_fix(
             fix_id=fix_id,
             what=what,
             fix_text=fix_text,
@@ -156,9 +166,9 @@ class FixesLogService:
         )
         await ctx.log(
             level="info",
-            message=f"Logged fix {fix_id} for account {customer_id} to its fixes-log sheet",
+            message=f"Logged fix {actual_id} for account {customer_id} to its fixes-log sheet",
         )
-        return {"fix_id": fix_id, "status": status}
+        return {"fix_id": actual_id, "status": status}
 
     async def list_fixes(self, ctx: Context, customer_id: str) -> List[Dict[str, Any]]:
         """Read back every row currently in one account's fixes-log sheet."""
@@ -250,7 +260,13 @@ def create_fixes_log_tools(
             customer_id: The ad account this fix belongs to - one account
                 always maps to exactly one sheet, never shared across
                 accounts
-            fix_id: A unique id for this fix (e.g. "F-20260827-01")
+            fix_id: A proposed id for this fix (e.g. "F-20260827-01") - if
+                another row already uses it (a concurrent session on the
+                same account may have picked the same "F-<today>-NN"
+                independently), a letter suffix is added automatically and
+                a new row is appended under that id instead. Check the
+                returned `fix_id` - use it, not what you passed in, for any
+                later review update
             what: Short label for what changed
             fix_text: What was actually done - **1-2 sentences only**: what
                 changed, a count, the scope (campaign/ad group/list). No

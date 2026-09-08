@@ -19,7 +19,12 @@ from src.services.review.fixes_log_sheet import (
 
 @pytest.fixture
 def mock_worksheet() -> Mock:
-    return Mock()
+    worksheet = Mock()
+    # Sane default so append_fix's now-mandatory find_row() pre-check
+    # doesn't choke on a bare Mock; tests exercising find_row/update_cell
+    # directly override this with their own id column.
+    worksheet.col_values.return_value = []
+    return worksheet
 
 
 @pytest.fixture
@@ -102,6 +107,90 @@ def test_update_cell_missing_fix_id_raises(
     with pytest.raises(FixesLogSheetError, match="No row found"):
         sheet.update_cell("F-999", "Conclusion", "value")
     mock_worksheet.update_cell.assert_not_called()
+
+
+def test_find_row_raises_on_duplicate_id(
+    sheet: FixesLogSheet, mock_worksheet: Mock
+) -> None:
+    """Two rows sharing an id (e.g. two sessions independently picking the
+    same "F-YYYYMMDD-NN" on the same day) must fail loudly, not silently
+    resolve to whichever row happens to come first - see the 2026-09-08
+    boo.ua incident this guards against."""
+    mock_worksheet.col_values.return_value = ["ID", "F-1", "F-2", "F-1"]
+
+    with pytest.raises(FixesLogSheetError, match="matches 2 rows"):
+        sheet.find_row("F-1")
+
+
+def test_append_fix_disambiguates_colliding_id_instead_of_failing(
+    sheet: FixesLogSheet, mock_worksheet: Mock
+) -> None:
+    """A collision must never block the caller or touch the existing row -
+    this is a secondary logging aid, not something a live change should
+    ever be held up by (2026-09-08 correction: an earlier version of this
+    fix made append_fix raise here, which broke normal concurrent use -
+    e.g. two terminals working different campaigns of the same account and
+    both picking "F-1" for their first fix of the day)."""
+    mock_worksheet.col_values.return_value = ["ID", "F-1"]
+
+    actual_id = sheet.append_fix(
+        fix_id="F-1",
+        what="Added keywords",
+        fix_text="Added 3 keywords to ad group Y",
+        status="Collecting data",
+        when="2026-09-08",
+        expectation="More impressions on the thin group",
+    )
+
+    assert actual_id == "F-1b"
+    mock_worksheet.append_row.assert_called_once_with(
+        [
+            "Added keywords",
+            "Added 3 keywords to ad group Y",
+            "Collecting data",
+            "2026-09-08",
+            "More impressions on the thin group",
+            "",
+            "",
+            "",
+            "",
+            "F-1b",
+        ]
+    )
+
+
+def test_append_fix_tries_further_suffixes_until_free(
+    sheet: FixesLogSheet, mock_worksheet: Mock
+) -> None:
+    mock_worksheet.col_values.return_value = ["ID", "F-1", "F-1b", "F-1c"]
+
+    actual_id = sheet.append_fix(
+        fix_id="F-1",
+        what="Added keywords",
+        fix_text="Added 3 keywords to ad group Z",
+        status="Collecting data",
+        when="2026-09-08",
+        expectation="More impressions on the thin group",
+    )
+
+    assert actual_id == "F-1d"
+
+
+def test_append_fix_returns_id_unchanged_when_free(
+    sheet: FixesLogSheet, mock_worksheet: Mock
+) -> None:
+    mock_worksheet.col_values.return_value = ["ID", "F-1"]
+
+    actual_id = sheet.append_fix(
+        fix_id="F-2",
+        what="Added keywords",
+        fix_text="Added 3 keywords to ad group Y",
+        status="Collecting data",
+        when="2026-09-08",
+        expectation="More impressions on the thin group",
+    )
+
+    assert actual_id == "F-2"
 
 
 def test_list_rows_returns_get_all_records(

@@ -16,7 +16,13 @@ from src.services.review.fixes_log_sheet import FixesLogSheet
 
 @pytest.fixture
 def mock_sheet() -> Mock:
-    return Mock(spec=FixesLogSheet)
+    sheet = Mock(spec=FixesLogSheet)
+    # append_fix now returns the id actually stored (which only differs
+    # from the requested one on a collision) - default to echoing the
+    # requested id back, matching real no-collision behavior; tests that
+    # care about the disambiguation path override this explicitly.
+    sheet.append_fix.side_effect = lambda fix_id, **kwargs: fix_id
+    return sheet
 
 
 @pytest.fixture
@@ -79,6 +85,29 @@ async def test_log_fix_custom_status(
     )
 
     assert result == {"fix_id": "F-2", "status": "custom"}
+
+
+@pytest.mark.asyncio
+async def test_log_fix_surfaces_disambiguated_id(
+    service: FixesLogService, mock_sheet: Mock, mock_ctx: Context
+) -> None:
+    """When the sheet had to disambiguate a colliding id, the service must
+    return *that* id, not the one the caller originally asked for - it's
+    the one a later review update actually needs."""
+    mock_sheet.append_fix.side_effect = None
+    mock_sheet.append_fix.return_value = "F-1b"
+
+    result = await service.log_fix(
+        ctx=mock_ctx,
+        customer_id="1234567890",
+        fix_id="F-1",
+        what="x",
+        fix_text="y",
+        when="2026-08-27",
+        expectation="z",
+    )
+
+    assert result == {"fix_id": "F-1b", "status": DEFAULT_STATUS}
 
 
 @pytest.mark.asyncio

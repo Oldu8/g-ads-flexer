@@ -310,22 +310,77 @@ class FixesLogSheet:
         status: str,
         when: str,
         expectation: str,
-    ) -> None:
-        """Append a new row. The three review columns and Conclusion start
-        blank - they're only ever filled in later, on an explicit review."""
-        worksheet = self._get_worksheet()
-        worksheet.append_row(
-            [what, fix_text, status, when, expectation, "", "", "", "", fix_id]
-        )
+    ) -> str:
+        """Append a brand-new row - never updates or touches an existing
+        one. The three review columns and Conclusion start blank - they're
+        only ever filled in later, on an explicit review.
 
-    def find_row(self, fix_id: str) -> Optional[int]:
-        """1-indexed sheet row number for a given fix id, or None."""
+        This never raises and never blocks on a busy sheet: this is a
+        secondary logging aid, not something a live change should ever be
+        held up by. Concurrent sessions working the same account (e.g. two
+        terminals, each on a different campaign) can easily pick the same
+        human-readable `fix_id` independently - there's no shared counter
+        between them, and there doesn't need to be. If `fix_id` is already
+        used by another row, a short letter suffix is appended
+        automatically (`F-1` -> `F-1b` -> `F-1c` ...) until a free one is
+        found, and *that* row is what gets appended - always a new row,
+        never the existing one. Returns the id actually written, which the
+        caller must use for any later `update_cell`/review call if it
+        differs from what was passed in.
+
+        (Before 2026-09-08 this raised on a collision instead - which
+        turned out to be the wrong tradeoff: it blocked normal concurrent
+        use instead of just avoiding the collision. Silently overwriting
+        the other row, the failure mode this was originally guarding
+        against, is what `find_row`/`update_cell` still refuse to do -
+        appending a fresh row was never the risky operation.)
+        """
         worksheet = self._get_worksheet()
         id_col_index = HEADER.index("ID") + 1
-        for row_number, value in enumerate(worksheet.col_values(id_col_index), start=1):
-            if value == fix_id:
-                return row_number
-        return None
+        existing_ids = set(worksheet.col_values(id_col_index))
+        actual_id = fix_id
+        if actual_id in existing_ids:
+            for suffix in "bcdefghijklmnopqrstuvwxyz":
+                candidate = f"{fix_id}{suffix}"
+                if candidate not in existing_ids:
+                    actual_id = candidate
+                    break
+            else:
+                import uuid
+
+                actual_id = f"{fix_id}-{uuid.uuid4().hex[:6]}"
+        worksheet.append_row(
+            [what, fix_text, status, when, expectation, "", "", "", "", actual_id]
+        )
+        return actual_id
+
+    def find_row(self, fix_id: str) -> Optional[int]:
+        """1-indexed sheet row number for a given fix id, or None.
+
+        Raises if more than one row carries the same id - silently
+        returning the first match would let an update meant for one fix
+        land on a different one (see `append_fix`'s docstring for how this
+        happened in practice). A pre-existing duplicate (e.g. from before
+        this check existed) must be resolved by hand in the sheet rather
+        than guessed at here.
+        """
+        worksheet = self._get_worksheet()
+        id_col_index = HEADER.index("ID") + 1
+        matches = [
+            row_number
+            for row_number, value in enumerate(
+                worksheet.col_values(id_col_index), start=1
+            )
+            if value == fix_id
+        ]
+        if len(matches) > 1:
+            raise FixesLogSheetError(
+                f"Fix id '{fix_id}' matches {len(matches)} rows "
+                f"({matches}) - refusing to guess which one. Resolve the "
+                "duplicate by hand in the sheet (give one of them a "
+                "distinguishing id) before updating this fix."
+            )
+        return matches[0] if matches else None
 
     def update_cell(self, fix_id: str, column_name: str, value: str) -> None:
         if column_name not in HEADER:

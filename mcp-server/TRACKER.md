@@ -1,5 +1,31 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-09-08 (4) — Fixes-log: concurrent sessions could collide on the same `fix_id`
+
+Found sitting uncommitted in the working tree (not from this session
+originally) while splitting pending work into logical commits - reviewed
+and verified (`ruff format`/`pyright`/`pytest` clean) before committing
+rather than taking it on faith, same standard as anything else that
+lands in this repo.
+
+There's no shared counter across sessions logging fixes for the same
+account, so two sessions picking "F-20260908-01" independently used to
+make `append_fix` either overwrite the wrong row or (after an earlier
+hardening pass not otherwise recorded here) raise and block a legitimate
+log-fix call outright - both the wrong tradeoff for what's meant to be a
+secondary logging aid, not something a live change should ever be held
+up by. Now: a colliding `fix_id` gets an automatic letter suffix (`F-1`
+→ `F-1b` → `F-1c` ..., falling back to a short uuid suffix past `z`) and
+a fresh row is appended under that id - `append_fix` never blocks, never
+touches the existing row. The actual id written is returned up through
+`FixesLogService.log_fix`'s response (`{"fix_id": ...}` may now differ
+from what was passed in - **callers must use the returned value**, not
+their own guess, for any later review update). Separately, `find_row`
+now raises loudly if a `fix_id` somehow matches more than one row (a
+pre-existing duplicate from before this check existed) instead of
+silently returning the first match, which could have pointed a review
+update at the wrong fix.
+
 ## ✅ 2026-09-08 (3) — Campaign drafts: async-error iteration failures were silently swallowed
 
 Also found sitting uncommitted (not from this session originally),
