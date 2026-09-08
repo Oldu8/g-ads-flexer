@@ -342,7 +342,12 @@ async def test_update_campaign_bidding_strategy(
     op = request.operations[0]
     assert op.update.target_cpa is not None
     assert op.update.target_cpa.target_cpa_micros == 3000000
-    assert "target_cpa" in op.update_mask.paths
+    # Leaf path, not just "target_cpa" - see the 2026-09-08 field-mask fix:
+    # a bare submessage-name mask risks either being rejected by Google Ads
+    # API or (worse) wiping sibling fields like cpc_bid_ceiling_micros that
+    # weren't part of this call.
+    assert "target_cpa.target_cpa_micros" in op.update_mask.paths
+    assert "target_cpa" not in op.update_mask.paths
 
 
 @pytest.mark.asyncio
@@ -426,7 +431,127 @@ async def test_update_campaign_nudge_max_conversion_value_roas(
     request = mock_client.mutate_campaigns.call_args[1]["request"]  # type: ignore
     op = request.operations[0]
     assert op.update.maximize_conversion_value.target_roas == 8.5
-    assert "maximize_conversion_value" in op.update_mask.paths
+    # Leaf path, not just "maximize_conversion_value" - see the 2026-09-08
+    # field-mask fix (this exact case is boo.ua's real shape: all of its
+    # enabled campaigns use MAXIMIZE_CONVERSION_VALUE).
+    assert "maximize_conversion_value.target_roas" in op.update_mask.paths
+    assert "maximize_conversion_value" not in op.update_mask.paths
+
+
+@pytest.mark.asyncio
+async def test_update_campaign_nudge_target_roas(
+    campaign_service: CampaignService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Nudging a standalone TARGET_ROAS campaign's target uses the leaf
+    path "target_roas.target_roas", not the bare submessage name (which
+    collides in spelling with the leaf field but is a different path)."""
+    mock_client, expected = _mock_mutate(campaign_service)
+
+    with patch(
+        "src.services.campaign.campaign_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        await campaign_service.update_campaign(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            campaign_id="111222333",
+            bidding_strategy_type="TARGET_ROAS",
+            target_roas=4.0,
+        )
+
+    request = mock_client.mutate_campaigns.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.update.target_roas.target_roas == 4.0
+    assert "target_roas.target_roas" in op.update_mask.paths
+    assert "target_roas" not in op.update_mask.paths
+
+
+@pytest.mark.asyncio
+async def test_update_campaign_nudge_maximize_conversions_target_cpa(
+    campaign_service: CampaignService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Nudging a MAXIMIZE_CONVERSIONS campaign's target CPA uses the leaf
+    path "maximize_conversions.target_cpa_micros"."""
+    mock_client, expected = _mock_mutate(campaign_service)
+
+    with patch(
+        "src.services.campaign.campaign_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        await campaign_service.update_campaign(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            campaign_id="111222333",
+            bidding_strategy_type="MAXIMIZE_CONVERSIONS",
+            target_cpa_micros=2500000,
+        )
+
+    request = mock_client.mutate_campaigns.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.update.maximize_conversions.target_cpa_micros == 2500000
+    assert "maximize_conversions.target_cpa_micros" in op.update_mask.paths
+    assert "maximize_conversions" not in op.update_mask.paths
+
+
+@pytest.mark.asyncio
+async def test_update_campaign_nudge_target_spend_ceiling(
+    campaign_service: CampaignService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Nudging a TARGET_SPEND campaign's CPC ceiling uses the leaf path
+    "target_spend.cpc_bid_ceiling_micros"."""
+    mock_client, expected = _mock_mutate(campaign_service)
+
+    with patch(
+        "src.services.campaign.campaign_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        await campaign_service.update_campaign(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            campaign_id="111222333",
+            bidding_strategy_type="TARGET_SPEND",
+            target_spend_cpc_bid_ceiling_micros=1500000,
+        )
+
+    request = mock_client.mutate_campaigns.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert op.update.target_spend.cpc_bid_ceiling_micros == 1500000
+    assert "target_spend.cpc_bid_ceiling_micros" in op.update_mask.paths
+    assert "target_spend" not in op.update_mask.paths
+
+
+@pytest.mark.asyncio
+async def test_update_campaign_switch_strategy_without_value_uses_parent_path(
+    campaign_service: CampaignService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Switching TO a strategy type without also supplying its target
+    value (e.g. just moving a campaign onto TARGET_CPA, letting Google
+    Ads pick the initial target) has no leaf value to point the mask at -
+    the bare submessage path is correct here, not a bug."""
+    mock_client, expected = _mock_mutate(campaign_service)
+
+    with patch(
+        "src.services.campaign.campaign_service.serialize_proto_message",
+        return_value=expected,
+    ):
+        await campaign_service.update_campaign(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            campaign_id="111222333",
+            bidding_strategy_type="TARGET_CPA",
+        )
+
+    request = mock_client.mutate_campaigns.call_args[1]["request"]  # type: ignore
+    op = request.operations[0]
+    assert set(op.update_mask.paths) == {"target_cpa"}
 
 
 @pytest.mark.asyncio

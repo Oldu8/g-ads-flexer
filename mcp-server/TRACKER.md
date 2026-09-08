@@ -1,5 +1,84 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-09-08 — Real bid-target field-mask bug fixed; a second reported "bug" turned out to be a stale process
+
+User relayed two bug reports from other bot sessions working against this
+same repo. Verified both independently rather than trusting either
+report at face value - one was real, one wasn't a code bug at all.
+
+**Not a code bug - stale process from before the 2026-09-07 restructuring.**
+"Could not find a suitable TLS CA certificate bundle, invalid path:
+...\.venv\Lib\site-packages\certifi\cacert.pem" pointing at the *old*
+root-level `.venv` (deleted during the restructuring, see the entry
+below). Confirmed via `Get-CimInstance Win32_Process`: one of 8 running
+`main.py` processes (PID 28992) was still launched from the old
+`C:\...\g-ads-flexer\.venv\Scripts\python.exe` - a leftover MCP client
+connection opened before the move, never reconnected since. Every other
+running instance already resolves correctly from
+`mcp-server\.venv\...`. Fix is operational, not code: close/reopen
+whatever client owns that stale connection so it relaunches via the
+current `.mcp.json` (which already points at the right path).
+
+**Real, distinct bug - `campaign_service.py`'s `_apply_bidding_strategy`
+built the `update_mask` from the wrong field depth.** For any bidding
+strategy whose target is a nested submessage field (`TargetRoas.target_roas`,
+`TargetCpa.target_cpa_micros`, `MaximizeConversions.target_cpa_micros`,
+`MaximizeConversionValue.target_roas`, `TargetSpend.cpc_bid_ceiling_micros`
+- confirmed each shape directly from the v25 protos, not assumed), the
+mask pointed at the *parent* submessage name (e.g. `"target_roas"`,
+`"maximize_conversion_value"`) instead of the specific leaf field being
+changed (`"target_roas.target_roas"`, `"maximize_conversion_value.target_roas"`).
+This is distinct from the 2026-08-17 (3) fix below (that one was a
+*silent no-op* when `bidding_strategy_type` was omitted entirely, guarded
+by a unit test against a mocked client) - this bug is one level deeper:
+even *with* `bidding_strategy_type` correctly passed, the mask path
+itself was wrong. Mocked-client tests never caught it because a mock
+doesn't validate real Google Ads API field-mask depth requirements - the
+same blind spot the bot report called out. **Directly affects boo.ua**:
+all of its enabled campaigns use `MAXIMIZE_CONVERSION_VALUE` (confirmed
+live 2026-08-17, see below), which has this exact nested-field shape - a
+`propose_update_campaign_bid_target`/`update_campaign` call nudging its
+target ROAS was going through the wrong mask path. No entry in the fixes
+log shows a target-ROAS change ever actually applied through this tool
+for boo.ua (existing target-ROAS values were set by hand in the Ads UI/
+Ads Editor, not through this MCP server) - real-world impact was
+"never actually exercised live," not "silently corrupted a real
+campaign," but the bug was real and would have bitten the first live use.
+
+**Fixed:** `_apply_bidding_strategy` now returns the exact mask path(s)
+it requires instead of the caller re-deriving them from a separate,
+now-removed `_BIDDING_FIELD_MAP` dict that only ever tracked the parent
+field name - single source of truth in the one place that already knows
+which leaf field it just set, rather than two pieces of logic (value-
+setting, mask-path) that can drift apart (which is exactly what
+happened). Falls back to the bare submessage path only when there's no
+leaf value to point at (switching strategy type without also setting its
+target - `MANUAL_CPC`, `TARGET_IMPRESSION_SHARE`, or any strategy type
+passed without its corresponding `target_*` param). `create_campaign`
+unaffected (creates don't use field masks at all).
+
+Tests: 4 new (`test_update_campaign_nudge_target_roas`,
+`..._nudge_maximize_conversions_target_cpa`,
+`..._nudge_target_spend_ceiling`,
+`..._switch_strategy_without_value_uses_parent_path`), 2 existing tests'
+assertions corrected to the leaf paths
+(`test_update_campaign_bidding_strategy`,
+`test_update_campaign_nudge_max_conversion_value_roas` - the exact
+boo.ua shape). `ruff format`/`pyright`/`pytest` all clean, 777 passed / 4
+skipped (up from 773). `apply_pending_change`'s
+`update_campaign_bid_target` dispatch calls this same
+`CampaignService.update_campaign` method directly (confirmed, not a
+separate code path) - the propose/apply flow inherits the fix
+automatically, nothing there needed touching.
+
+**Not independently verified against a live account** - the MCP
+connection to boo.ua was down for this session (`google-ads
+(CONNECTION_CLOSED)`). The fix matches Google's own documented field-mask
+convention (leaf-level paths for nested message fields) and is covered by
+the new tests above, but hasn't been confirmed against a real
+`mutate_campaigns` call yet - worth a real (small, reversible) live check
+next session before relying on it for a real bid-target change.
+
 ## 🚧 2026-09-07 — Repo restructured into a monorepo; platform architecture locked in
 
 The user decided to actually build the hosted multi-tenant product

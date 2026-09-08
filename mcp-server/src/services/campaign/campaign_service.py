@@ -59,8 +59,28 @@ def _apply_bidding_strategy(
     target_roas: Optional[float] = None,
     max_conversion_value_target_roas: Optional[float] = None,
     target_spend_cpc_bid_ceiling_micros: Optional[int] = None,
-) -> None:
-    """Set the bidding strategy on a Campaign proto based on type string."""
+) -> List[str]:
+    """Set the bidding strategy on a Campaign proto based on type string.
+
+    Returns the `update_mask` path(s) this call requires. For a strategy
+    whose caller supplied a specific target *value* (e.g. `target_roas`
+    for TARGET_ROAS, `max_conversion_value_target_roas` for
+    MAXIMIZE_CONVERSION_VALUE), the path must reference that leaf field
+    specifically (e.g. `"target_roas.target_roas"`,
+    `"maximize_conversion_value.target_roas"`) - Google Ads API's update
+    masks operate on the exact field being changed, not just "some field
+    inside this submessage changed". Returning just the parent submessage
+    name (`"target_roas"`, `"maximize_conversion_value"`) for a leaf-value
+    update is wrong on two counts: it doesn't match the field Google Ads
+    API expects in the mask, and if it were accepted at face value it
+    would mean "replace the whole submessage", silently wiping sibling
+    fields like `cpc_bid_ceiling_micros`/`cpc_bid_floor_micros` that
+    weren't part of this call at all. Only fall back to the bare
+    submessage name when there's no specific leaf value to point at
+    (switching strategy type without also setting its target, e.g. plain
+    MANUAL_CPC or TARGET_IMPRESSION_SHARE, which don't take a target
+    value here at all).
+    """
     bst = bidding_strategy_type.upper()
 
     if bst == "PORTFOLIO":
@@ -69,37 +89,63 @@ def _apply_bidding_strategy(
                 "bidding_strategy_resource_name is required for PORTFOLIO bidding"
             )
         campaign.bidding_strategy = bidding_strategy_resource_name
-        return
+        # Scalar field directly on Campaign, not nested - no leaf to drill into.
+        return ["bidding_strategy"]
 
     if bst == "MANUAL_CPC":
         campaign.manual_cpc = ManualCpc()
+        return ["manual_cpc"]
     elif bst == "TARGET_CPA":
         tc = TargetCpa()
         if target_cpa_micros is not None:
             tc.target_cpa_micros = target_cpa_micros
         campaign.target_cpa = tc
+        return (
+            ["target_cpa.target_cpa_micros"]
+            if target_cpa_micros is not None
+            else ["target_cpa"]
+        )
     elif bst == "TARGET_ROAS":
         tr = TargetRoas()
         if target_roas is not None:
             tr.target_roas = target_roas
         campaign.target_roas = tr
+        return (
+            ["target_roas.target_roas"] if target_roas is not None else ["target_roas"]
+        )
     elif bst == "MAXIMIZE_CONVERSIONS":
         mc = MaximizeConversions()
         if target_cpa_micros is not None:
             mc.target_cpa_micros = target_cpa_micros
         campaign.maximize_conversions = mc
+        return (
+            ["maximize_conversions.target_cpa_micros"]
+            if target_cpa_micros is not None
+            else ["maximize_conversions"]
+        )
     elif bst == "MAXIMIZE_CONVERSION_VALUE":
         mcv = MaximizeConversionValue()
         if max_conversion_value_target_roas is not None:
             mcv.target_roas = max_conversion_value_target_roas
         campaign.maximize_conversion_value = mcv
+        return (
+            ["maximize_conversion_value.target_roas"]
+            if max_conversion_value_target_roas is not None
+            else ["maximize_conversion_value"]
+        )
     elif bst == "TARGET_SPEND":
         ts = TargetSpend()
         if target_spend_cpc_bid_ceiling_micros is not None:
             ts.cpc_bid_ceiling_micros = target_spend_cpc_bid_ceiling_micros
         campaign.target_spend = ts
+        return (
+            ["target_spend.cpc_bid_ceiling_micros"]
+            if target_spend_cpc_bid_ceiling_micros is not None
+            else ["target_spend"]
+        )
     elif bst == "TARGET_IMPRESSION_SHARE":
         campaign.target_impression_share = TargetImpressionShare()
+        return ["target_impression_share"]
     else:
         raise ValueError(f"Unsupported bidding_strategy_type: {bidding_strategy_type}")
 
@@ -324,7 +370,7 @@ class CampaignService:
 
             if bidding_strategy_type is not None:
                 bst = bidding_strategy_type.upper()
-                _apply_bidding_strategy(
+                bidding_mask_paths = _apply_bidding_strategy(
                     campaign,
                     bidding_strategy_type=bst,
                     bidding_strategy_resource_name=bidding_strategy_resource_name,
@@ -333,19 +379,7 @@ class CampaignService:
                     max_conversion_value_target_roas=max_conversion_value_target_roas,
                     target_spend_cpc_bid_ceiling_micros=target_spend_cpc_bid_ceiling_micros,
                 )
-                _BIDDING_FIELD_MAP: Dict[str, str] = {
-                    "MANUAL_CPC": "manual_cpc",
-                    "TARGET_CPA": "target_cpa",
-                    "TARGET_ROAS": "target_roas",
-                    "MAXIMIZE_CONVERSIONS": "maximize_conversions",
-                    "MAXIMIZE_CONVERSION_VALUE": "maximize_conversion_value",
-                    "TARGET_SPEND": "target_spend",
-                    "TARGET_IMPRESSION_SHARE": "target_impression_share",
-                    "PORTFOLIO": "bidding_strategy",
-                }
-                field = _BIDDING_FIELD_MAP.get(bst)
-                if field:
-                    update_mask_fields.append(field)
+                update_mask_fields.extend(bidding_mask_paths)
 
             operation = CampaignOperation()
             operation.update = campaign
