@@ -402,11 +402,17 @@ async def test_list_campaign_draft_async_errors_empty(
     # Assert - should return empty list when iteration fails
     assert result == []
 
-    # Verify logging
-    mock_ctx.log.assert_called_once_with(  # type: ignore
+    # Verify the failure was logged (not silently swallowed), then the
+    # zero-count info log still follows.
+    mock_ctx.log.assert_any_call(  # type: ignore
+        level="warning",
+        message="Failed to fully iterate async errors for campaign draft: Iteration failed",
+    )
+    mock_ctx.log.assert_any_call(  # type: ignore
         level="info",
         message="Found 0 async errors for campaign draft",
     )
+    assert mock_ctx.log.call_count == 2  # type: ignore
 
 
 @pytest.mark.asyncio

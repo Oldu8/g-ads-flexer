@@ -1,5 +1,22 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-09-08 (3) — Campaign drafts: async-error iteration failures were silently swallowed
+
+Also found sitting uncommitted (not from this session originally),
+reviewed and verified before committing. `list_campaign_draft_async_errors`
+wrapped its pagination loop in a bare `except Exception: pass`, so a
+genuine failure mid-iteration (network blip, malformed page) was
+indistinguishable from a draft that legitimately has zero async errors -
+both reported "Found 0 async errors." Now logs a `warning` with the
+exception instead, matching the fallback-logging pattern already used
+elsewhere (e.g. `search_service.py`). No change to the success-path
+return value. Tracked via an OpenSpec change
+(`openspec/changes/archive/2026-09-08-log-async-error-iteration-failures/`)
+- this repo's first use of that workflow; the OpenSpec/Cursor tooling
+scaffolding itself (`openspec/config.yaml`, `.cursor/skills/openspec-*`,
+`.cursor/commands/opsx-*`) is its own separate commit, since it's tooling
+setup rather than a code change.
+
 ## ✅ 2026-09-08 — Real bid-target field-mask bug fixed; a second reported "bug" turned out to be a stale process
 
 User relayed two bug reports from other bot sessions working against this

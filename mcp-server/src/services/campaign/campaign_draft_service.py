@@ -332,9 +332,14 @@ class CampaignDraftService:
                 for page in response:
                     # Convert page to string representation
                     errors.append({"error": str(page), "type": "async_error"})
-            except Exception:
-                # If iteration fails, return empty list
-                pass
+            except Exception as e:
+                # Iteration failed partway through - log it so this is
+                # distinguishable from a draft that genuinely has zero
+                # async errors, and return what was collected so far.
+                await ctx.log(
+                    level="warning",
+                    message=f"Failed to fully iterate async errors for campaign draft: {str(e)}",
+                )
 
             await ctx.log(
                 level="info",
