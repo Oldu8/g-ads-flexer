@@ -13,7 +13,7 @@ deployment authenticates *as* (that's still `sdk_client.py`'s single,
 process-wide singleton, set once at startup from `.env`). An alias only
 works for an account already reachable under this deployment's configured
 manager account (`GOOGLE_ADS_LOGIN_CUSTOMER_ID`) - a genuinely separate
-Google Ads API credential set (its own developer token/OAuth client)
+Google Ads API credential set (its own OAuth refresh token)
 still needs its own `.env`/process; see `docs/CLIENT_ONBOARDING.md` and
 `docs/ACCOUNT_SWITCHING.md`.
 

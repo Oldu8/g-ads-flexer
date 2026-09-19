@@ -67,7 +67,7 @@ uv sync
 Create a `.env` file or export the required Google Ads credentials:
 
 ```bash
-GOOGLE_ADS_DEVELOPER_TOKEN="your_developer_token"
+GOOGLE_ADS_DEVELOPER_TOKEN="placeholder"   # deprecated by Google 2026-09-09; SDK 31.2.0 still requires a value
 GOOGLE_ADS_CLIENT_ID="your_client_id"
 GOOGLE_ADS_CLIENT_SECRET="your_client_secret"
 GOOGLE_ADS_REFRESH_TOKEN="your_refresh_token"
@@ -75,6 +75,11 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID="optional_manager_customer_id"
 ```
 
 See [`.env.example`](./.env.example) for the full credential template.
+
+Google removed the developer token on 2026-09-09: API access level now
+belongs to the Google Cloud project that owns your OAuth client, and the
+header is ignored. The variable stays only because the Python SDK still
+validates its presence.
 
 ## Run
 
@@ -124,7 +129,7 @@ Example stdio configuration:
       "args": ["run", "main.py", "--groups", "all"],
       "cwd": "/path/to/google-ads-mcp",
       "env": {
-        "GOOGLE_ADS_DEVELOPER_TOKEN": "...",
+        "GOOGLE_ADS_DEVELOPER_TOKEN": "placeholder",
         "GOOGLE_ADS_CLIENT_ID": "...",
         "GOOGLE_ADS_CLIENT_SECRET": "...",
         "GOOGLE_ADS_REFRESH_TOKEN": "..."

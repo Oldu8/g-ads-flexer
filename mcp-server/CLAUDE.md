@@ -7,6 +7,16 @@ You're working on google-ads-mcp project, it's a MCP(model context protocal) ser
 google ads offers it's own client sdk as well as REST api. Client one has python sdk, built on top of protobuf schema. REST api does not have any existing openapi specs but referenec docs.
 we decided to go with python sdk, since it's well maintained and does most of the heavy lifting, i.e. retries, pagination, etc.
 
+**Developer token is gone (Google, 2026-09-09).** Access level now belongs to the
+Google Cloud project owning the OAuth client (ours: `178951272716`, Basic =
+15,000 ops/day shared by all tenants); the `developer-token` header is ignored
+and a future major API version will reject it. `google-ads==31.2.0` still
+requires the config key and still sends the header, so `.env` keeps a
+placeholder value only to satisfy SDK validation - never treat it as a secret
+or a per-tenant value, never add it to any schema/onboarding, and remove it
+once the SDK makes it optional. Full platform consequences (connection model,
+quota accounting, phases) live in `../docs/PLATFORM_ARCHITECTURE.md`.
+
 ## resources
 
 here are some high level resources:

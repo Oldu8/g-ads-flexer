@@ -1,5 +1,37 @@
 # Google Ads MCP Service Implementation Tracker
 
+## 🎯 2026-09-14 — Developer token removed by Google; platform docs re-based, read-only MVP chosen
+
+Google deprecated the developer token on 2026-09-09: the API access level
+now lives on the Cloud project that owns the OAuth client (ours,
+`178951272716`, already has Basic = 15,000 ops/day for the whole project),
+the header is ignored, an MCC is no longer needed for API access, API
+Center is obsolete, and access levels can't be moved to another Cloud
+project (a new one starts at Test) - so that project is now a
+non-replaceable asset. `docs/PLATFORM_ARCHITECTURE.md` was rewritten
+around this: `mcc_connections` → `google_connections` (one OAuth grant =
+N accounts, `accounts` stores `(customer_id, login_customer_id)` fixed by
+discovery via `list_accessible_customers` + a `customer_client` walk),
+per-tenant API-usage accounting + caps pulled into Phase 1 because the
+quota is shared, homepage/privacy/terms/brand verification pulled into a
+new Phase 0, and Standard access made an explicit Phase 4 item with its
+dependencies (demo account, guarded-writes + fixes-log write-up, RMF check
+for a whitelisted write surface, ~50%-of-Basic trigger).
+
+Same session, product decisions: launch as a **read-only MVP** (curated
+`read_only` tool profile, Ads Editor paste tables instead of API writes,
+per-account `context` injected as mount instructions, fixes log resolved
+from `accounts.fixes_sheet_id` - one sheet per client per ad account);
+no pricing/billing/blog before a 5-10 user pilot reads positive.
+
+**Verified locally, not assumed:** `google-ads==31.2.0` still has
+`developer_token` in `config.py`'s `_REQUIRED_KEYS` and still injects the
+header in `metadata_interceptor.py`, so the code can't simply stop sending
+it yet - a placeholder constant in one client-builder function is the
+plan until an SDK release makes it optional. Code changes are tracked in
+OpenSpec change `openspec/changes/remove-developer-token-connection-model/`;
+nothing in `src/` changed in this session.
+
 ## ✅ 2026-09-08 (4) — Fixes-log: concurrent sessions could collide on the same `fix_id`
 
 Found sitting uncommitted in the working tree (not from this session

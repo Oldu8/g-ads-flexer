@@ -1,5 +1,12 @@
 # Onboarding a new client
 
+> **Scope note (2026-09-14).** This describes the *local, one-deployment-
+> per-client* model. The hosted multi-tenant product follows
+> [`../../docs/PLATFORM_ARCHITECTURE.md`](../../docs/PLATFORM_ARCHITECTURE.md)
+> instead (one OAuth grant per user, accounts discovered and pinned per
+> MCP URL). Also: Google removed the developer token on 2026-09-09 - step 1
+> below is now OAuth-only.
+
 **Model: one deployment per client, each with its own Google Ads API
 credentials.** Explicitly not a shared-MCC model — agencies run their own
 MCCs and won't grant an external one access, and we don't want to hold
@@ -15,28 +22,30 @@ strategy (step 3) so you're not re-deciding it per client.
 
 ## Per-client checklist
 
-### 1. Client applies for their own Google Ads API access
+### 1. Client authorizes API access (OAuth only - no developer token)
 
-This is the slow part — it's a Google review, not something either of you
-can speed up:
+Since 2026-09-09 there is no developer token: the API access level belongs
+to the Google Cloud project that owns the OAuth client. Nothing here is a
+Google review any more; the only slow part is the one-time access-level
+status of the Cloud project you use (ours, `178951272716`, has Basic).
 
-- Client (or you, acting on their account) applies for a **developer
-  token** on their own MCC (Google Ads UI → Tools & Settings → API Center).
-  Test-account-only access is instant; **standard access** (needed to touch
-  real, non-test accounts) requires Google's review — this is the wait.
-- Create an **OAuth client** (Google Cloud Console → APIs & Services →
-  Credentials) under a Google Cloud project — the client's own project, or
-  one of yours dedicated to this client (either works; it's just where the
-  OAuth client id/secret live, it does not grant you access to their Ads
-  account by itself).
+- Use an **OAuth client** from a Cloud project that already has Basic (or
+  higher) access. Do **not** create a fresh Cloud project per client - a
+  new project starts at Test access and access levels can't be moved
+  between projects.
 - Generate a **refresh token** once, authorizing whichever Google account
   will act as the API user against the client's Ads account (their own
-  account, or an account they've granted Standard/Admin access to via
-  Google Ads UI → Admin → Access and security → Users).
-- End state: `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,
-  `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`,
-  `GOOGLE_ADS_LOGIN_CUSTOMER_ID` — all specific to this one client, none of
-  them reused from another client's setup.
+  account, or one they've granted Standard/Admin access to via Google Ads
+  UI → Admin → Access and security → Users). An MCC is optional - only
+  needed if that identity reaches the account through a manager, in which
+  case set `GOOGLE_ADS_LOGIN_CUSTOMER_ID` to that manager.
+- End state: `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`,
+  `GOOGLE_ADS_REFRESH_TOKEN`, optional `GOOGLE_ADS_LOGIN_CUSTOMER_ID`.
+  `GOOGLE_ADS_DEVELOPER_TOKEN` keeps any placeholder value purely because
+  `google-ads==31.2.0` refuses to load without the key; Google ignores it.
+- Quota is per Cloud project (Basic: 15,000 ops/day) and therefore shared
+  by every client using the same OAuth client - keep that in mind before
+  pointing many deployments at one project.
 
 ### 2. Client's tracking spreadsheet
 
@@ -88,8 +97,9 @@ anything for real against their live account.
 
 ## What's still manual / not automated
 
-- The developer-token application and OAuth consent are Google's own flows
-  — nothing here can speed up or automate them.
+- The OAuth consent and the Cloud project's access-level status (Basic /
+  Standard) are Google's own flows — nothing here can speed up or automate
+  them.
 - Service account key files are secrets - treat them like any other
   credential in `.env` (never commit; `.gitignore` already covers `.env`).
 - If a client revokes their sheet share or their Ads account access, tools
@@ -102,7 +112,7 @@ Revisit this doc once there's a real second paying client and the
 single-tenant "one deployment per client" model is clearly the bottleneck
 (not before - see the 2026-08-27 TRACKER.md entry for the reasoning). The
 multi-tenant version would need: encrypted-at-rest storage for other
-companies' developer tokens/OAuth secrets/refresh tokens (a real secrets
+companies' OAuth refresh tokens (a real secrets
 manager, not a database column), a login/admin panel for clients to submit
 their own credentials, `sdk_client.py` reworked to resolve credentials
 per-request instead of once at startup, and per-connected-account MCP

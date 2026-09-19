@@ -25,8 +25,8 @@ account, or does it need entirely separate Google Ads API credentials?**
 
 Check `.env`'s `GOOGLE_ADS_LOGIN_CUSTOMER_ID` - today that's `9587322149`,
 boo.ua's manager account, with `5690318342` linked under it as a client
-account. `sdk_client.py` authenticates as **one developer token / OAuth
-client / manager account for the whole running process** - that hasn't
+account. `sdk_client.py` authenticates as **one OAuth refresh token /
+manager account for the whole running process** - that hasn't
 changed and isn't something this feature touches.
 
 - **New account gets linked under the same manager (`9587322149`)** - this
@@ -35,7 +35,7 @@ changed and isn't something this feature touches.
   account is reachable the moment it's linked, zero code involved. The
   alias registry below just saves you from typing/remembering a second raw
   numeric id.
-- **New account needs its own developer token/OAuth client** (a
+- **New account needs its own OAuth refresh token** (a
   completely separate advertiser, not something you'd link under your own
   manager) - the registry below can't help with that part. You need a
   second `.env` and a second running process, per
