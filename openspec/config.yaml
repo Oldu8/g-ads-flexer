@@ -1,4 +1,4 @@
-schema: spec-driven
+schema: lean
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.
@@ -17,7 +17,20 @@ context: |
 # Add custom rules for specific artifacts.
 rules:
   proposal:
-    - State which side(s) this change touches: mcp-server, web, or both (via the shared DB).
+    - "State which side(s) this change touches: mcp-server, web, or both (via the shared DB)."
+    - Keep it short (under ~200 words for a typical fix) — skip sections that don't apply.
+  tasks:
+    - Keep the checklist tight — combine trivial steps, don't pad it out for a small fix.
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+operations:
+  apply:
+    guidance:
+      - Don't pause to ask clarifying questions unless genuinely blocked (missing
+        credentials, ambiguous business decision) — make the reasonable call
+        yourself and note it in the proposal rather than stopping to ask.
 # Example:
 #   rules:
 #     proposal:
@@ -25,11 +38,6 @@ rules:
 #       - Always include a "Non-goals" section
 #     tasks:
 #       - Break tasks into chunks of max 2 hours
-
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
 #   operations:
 #     apply:
 #       guidance:
