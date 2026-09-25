@@ -92,7 +92,9 @@ class RecommendationService:
                     recommendation.text_ad_recommendation,
                     recommendation.target_cpa_opt_in_recommendation,
                     recommendation.responsive_search_ad_recommendation,
-                    recommendation.sitelink_asset_recommendation
+                    recommendation.sitelink_asset_recommendation,
+                    recommendation.raise_target_cpa_performance_bid_too_low_recommendation,
+                    recommendation.lower_target_roas_performance_bid_too_low_recommendation
                 FROM recommendation
             """
 
@@ -198,6 +200,27 @@ class RecommendationService:
                         }
                     }
 
+                # v25.2: the bid target itself limits delivery. Applying
+                # needs a multiplier (see apply_recommendation); Google's
+                # suggested one is recommended_target_multiplier.
+                if rec.raise_target_cpa_performance_bid_too_low_recommendation:
+                    cpa_rec = (
+                        rec.raise_target_cpa_performance_bid_too_low_recommendation
+                    )
+                    rec_dict["raise_target_cpa_performance_bid_too_low"] = {
+                        "recommended_target_multiplier": cpa_rec.recommended_target_multiplier,
+                        "current_average_target_cpa_micros": cpa_rec.current_average_target_cpa_micros,
+                    }
+
+                if rec.lower_target_roas_performance_bid_too_low_recommendation:
+                    roas_rec = (
+                        rec.lower_target_roas_performance_bid_too_low_recommendation
+                    )
+                    rec_dict["lower_target_roas_performance_bid_too_low"] = {
+                        "recommended_target_multiplier": roas_rec.recommended_target_multiplier,
+                        "current_average_target_roas": roas_rec.current_average_target_roas,
+                    }
+
                 recommendations.append(rec_dict)
 
             await ctx.log(
@@ -217,6 +240,8 @@ class RecommendationService:
         ctx: Context,
         customer_id: str,
         recommendation_resource_name: str,
+        target_cpa_multiplier: Optional[float] = None,
+        target_roas_multiplier: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Apply a recommendation.
 
@@ -224,16 +249,40 @@ class RecommendationService:
             ctx: FastMCP context
             customer_id: The customer ID
             recommendation_resource_name: The recommendation resource name to apply
+            target_cpa_multiplier: Required for RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW;
+                must be > 1.0
+            target_roas_multiplier: Required for LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW;
+                must be < 1.0
 
         Returns:
             Applied recommendation details
         """
+        if target_cpa_multiplier is not None and target_roas_multiplier is not None:
+            raise ValueError(
+                "Pass target_cpa_multiplier or target_roas_multiplier, not both: "
+                "each belongs to a different recommendation type."
+            )
+        if target_cpa_multiplier is not None and target_cpa_multiplier <= 1.0:
+            raise ValueError(
+                f"target_cpa_multiplier must be greater than 1.0 (raises target CPA), got {target_cpa_multiplier}"
+            )
+        if (
+            target_roas_multiplier is not None
+            and not 0.0 < target_roas_multiplier < 1.0
+        ):
+            raise ValueError(
+                f"target_roas_multiplier must be between 0 and 1.0 (lowers target ROAS), got {target_roas_multiplier}"
+            )
         try:
             customer_id = format_customer_id(customer_id)
 
             # Create operation
             operation = ApplyRecommendationOperation()
             operation.resource_name = recommendation_resource_name
+            if target_cpa_multiplier is not None:
+                operation.raise_target_cpa_performance_bid_too_low.target_cpa_multiplier = target_cpa_multiplier
+            if target_roas_multiplier is not None:
+                operation.lower_target_roas_performance_bid_too_low.target_roas_multiplier = target_roas_multiplier
 
             # Create request
             request = ApplyRecommendationRequest()
@@ -347,6 +396,10 @@ def create_recommendation_tools(
                 - SITELINK_EXTENSION
                 - CALL_EXTENSION
                 - KEYWORD_MATCH_TYPE
+                - RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW (target CPA too low
+                  for Search; details include recommended_target_multiplier)
+                - LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW (target ROAS too
+                  high for Search; details include recommended_target_multiplier)
                 - etc.
             campaign_ids: Optional list of campaign IDs to filter recommendations
             dismissed: Whether to include dismissed recommendations
@@ -368,12 +421,22 @@ def create_recommendation_tools(
         ctx: Context,
         customer_id: str,
         recommendation_resource_name: str,
+        target_cpa_multiplier: Optional[float] = None,
+        target_roas_multiplier: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Apply a specific recommendation.
 
         Args:
             customer_id: The customer ID
             recommendation_resource_name: The full resource name of the recommendation to apply
+            target_cpa_multiplier: Required for RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW:
+                factor > 1.0 to raise target CPA by (e.g. 1.2 = +20%). Use the
+                recommendation's recommended_target_multiplier unless the user
+                chose another value.
+            target_roas_multiplier: Required for LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW:
+                factor < 1.0 to lower target ROAS by (e.g. 0.9 = -10%). Use the
+                recommendation's recommended_target_multiplier unless the user
+                chose another value.
 
         Returns:
             Applied recommendation details
@@ -382,6 +445,8 @@ def create_recommendation_tools(
             ctx=ctx,
             customer_id=customer_id,
             recommendation_resource_name=recommendation_resource_name,
+            target_cpa_multiplier=target_cpa_multiplier,
+            target_roas_multiplier=target_roas_multiplier,
         )
 
     async def dismiss_recommendation(

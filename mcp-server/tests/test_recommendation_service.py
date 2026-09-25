@@ -1,13 +1,17 @@
 """Tests for RecommendationService."""
 
-from typing import Any
+from typing import Any, Dict
 from unittest.mock import Mock, patch
 
 import pytest
 from fastmcp import Context
+from google.ads.googleads.v25.enums.types.recommendation_type import (
+    RecommendationTypeEnum,
+)
 from google.ads.googleads.v25.services.services.recommendation_service import (
     RecommendationServiceClient,
 )
+from google.ads.googleads.v25.services.types.google_ads_service import GoogleAdsRow
 from google.ads.googleads.v25.services.types.recommendation_service import (
     ApplyRecommendationResponse,
     DismissRecommendationResponse,
@@ -399,3 +403,140 @@ def test_register_recommendation_tools() -> None:
     ]
 
     assert set(tool_names) == set(expected_tools)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kwargs", "oneof_field", "param", "value"),
+    [
+        (
+            {"target_cpa_multiplier": 1.25},
+            "raise_target_cpa_performance_bid_too_low",
+            "target_cpa_multiplier",
+            1.25,
+        ),
+        (
+            {"target_roas_multiplier": 0.85},
+            "lower_target_roas_performance_bid_too_low",
+            "target_roas_multiplier",
+            0.85,
+        ),
+    ],
+)
+async def test_apply_bid_too_low_recommendation_sets_multiplier(
+    recommendation_service: RecommendationService,
+    mock_ctx: Context,
+    kwargs: Dict[str, float],
+    oneof_field: str,
+    param: str,
+    value: float,
+) -> None:
+    """v25.2 bid-too-low recommendations need their multiplier on the operation."""
+    mock_client = recommendation_service.client  # type: ignore
+    mock_client.apply_recommendation.return_value = Mock(  # type: ignore
+        spec=ApplyRecommendationResponse
+    )
+    with patch(
+        "src.services.planning.recommendation_service.serialize_proto_message",
+        return_value={},
+    ):
+        await recommendation_service.apply_recommendation(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            recommendation_resource_name="customers/1234567890/recommendations/7",
+            **kwargs,
+        )
+
+    request = mock_client.apply_recommendation.call_args[1]["request"]  # type: ignore
+    operation = request.operations[0]
+    assert getattr(getattr(operation, oneof_field), param) == pytest.approx(value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"target_cpa_multiplier": 1.0},
+        {"target_cpa_multiplier": 0.8},
+        {"target_roas_multiplier": 1.0},
+        {"target_roas_multiplier": 0.0},
+        {"target_cpa_multiplier": 1.2, "target_roas_multiplier": 0.8},
+    ],
+)
+async def test_apply_bid_too_low_recommendation_rejects_bad_multiplier(
+    recommendation_service: RecommendationService,
+    mock_ctx: Context,
+    kwargs: Dict[str, float],
+) -> None:
+    """Out-of-range or conflicting multipliers never reach the API."""
+    with pytest.raises(ValueError):
+        await recommendation_service.apply_recommendation(
+            ctx=mock_ctx,
+            customer_id="1234567890",
+            recommendation_resource_name="customers/1234567890/recommendations/7",
+            **kwargs,
+        )
+    recommendation_service.client.apply_recommendation.assert_not_called()  # type: ignore
+
+
+@pytest.mark.asyncio
+async def test_get_recommendations_bid_too_low_details(
+    recommendation_service: RecommendationService,
+    mock_sdk_client: Any,
+    mock_ctx: Context,
+) -> None:
+    """Both v25.2 bid-too-low recommendation types are selected and returned."""
+    cpa_row = GoogleAdsRow()
+    cpa_row.recommendation.resource_name = "customers/1234567890/recommendations/1"
+    cpa_row.recommendation.type_ = RecommendationTypeEnum.RecommendationType.RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW
+    cpa = cpa_row.recommendation.raise_target_cpa_performance_bid_too_low_recommendation
+    cpa.recommended_target_multiplier = 1.3
+    cpa.current_average_target_cpa_micros = 15_000_000
+
+    roas_row = GoogleAdsRow()
+    roas_row.recommendation.resource_name = "customers/1234567890/recommendations/2"
+    roas_row.recommendation.type_ = RecommendationTypeEnum.RecommendationType.LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW
+    roas = (
+        roas_row.recommendation.lower_target_roas_performance_bid_too_low_recommendation
+    )
+    roas.recommended_target_multiplier = 0.8
+    roas.current_average_target_roas = 4.5
+
+    mock_google_ads_service = Mock()
+    mock_google_ads_service.search.return_value = [cpa_row, roas_row]  # type: ignore
+    mock_sdk_client.client.get_service.side_effect = (  # type: ignore
+        lambda name, **_: (
+            mock_google_ads_service  # type: ignore
+            if name == "GoogleAdsService"
+            else recommendation_service.client
+        )
+    )
+
+    with patch(
+        "src.services.planning.recommendation_service.get_sdk_client",
+        return_value=mock_sdk_client,
+    ):
+        result = await recommendation_service.get_recommendations(
+            ctx=mock_ctx, customer_id="1234567890"
+        )
+
+    query = mock_google_ads_service.search.call_args[1]["query"]  # type: ignore
+    assert (
+        "recommendation.raise_target_cpa_performance_bid_too_low_recommendation"
+        in query
+    )
+    assert (
+        "recommendation.lower_target_roas_performance_bid_too_low_recommendation"
+        in query
+    )
+
+    assert result[0]["type"] == "RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW"
+    assert result[0]["raise_target_cpa_performance_bid_too_low"] == {
+        "recommended_target_multiplier": pytest.approx(1.3),
+        "current_average_target_cpa_micros": 15_000_000,
+    }
+    assert result[1]["type"] == "LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW"
+    assert result[1]["lower_target_roas_performance_bid_too_low"] == {
+        "recommended_target_multiplier": pytest.approx(0.8),
+        "current_average_target_roas": pytest.approx(4.5),
+    }
