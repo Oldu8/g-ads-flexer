@@ -20,11 +20,7 @@ def test_uses_load_from_storage_when_yaml_exists(
 ) -> None:
     cfg = tmp_path / "google-ads.yaml"
     cfg.write_text(
-        "developer_token: t\n"
-        "use_proto_plus: true\n"
-        "client_id: x\n"
-        "client_secret: y\n"
-        "refresh_token: z\n",
+        "use_proto_plus: true\nclient_id: x\nclient_secret: y\nrefresh_token: z\n",
         encoding="utf-8",
     )
     with patch(
