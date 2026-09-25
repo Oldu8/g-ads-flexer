@@ -209,3 +209,6 @@ snapshots/
 
 # Scratch/output files (audit dumps, keyword lists, etc.) - see CLAUDE.md RULES #4
 tmp/
+
+# Google OAuth client secrets downloaded from Cloud Console - never commit
+client_secret*.json
