@@ -1,3 +1,5 @@
+> **Scope narrowed 2026-09-23:** implementation moved to `platform-db-and-cabinet` and `hosted-multitenant-writes` (see `tasks.md`). What remains here is the documentation rewrite, which is done.
+
 ## Why
 
 Google removed the developer token from the Google Ads API on 2026-09-09. Access level now belongs to the Cloud project that owns the OAuth client (ours, `178951272716`, has Basic: 15,000 ops/day shared by every tenant), the header is ignored, and an MCC is no longer needed for API access. The multi-tenant plan was built on "one user = one MCC + one dev token" and on a per-tenant quota assumption; both are now wrong, and the code still carries the token through config, docs and every request.
@@ -13,7 +15,7 @@ Google removed the developer token from the Google Ads API on 2026-09-09. Access
 
 ## Capabilities
 
-### New Capabilities
+### New Capabilities (moved to hosted-multitenant-writes)
 - `tenant-connection`: how a tenant's Google Ads credentials are stored, resolved per request, and pinned to one ad account — without a developer token.
 - `api-quota-accounting`: per-account operation counting and caps against the shared project-level Basic quota.
 

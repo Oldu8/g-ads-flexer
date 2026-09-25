@@ -40,21 +40,16 @@ Google Ads has a large, typed API surface, but it is hard for agents to use dire
 
 ## Coverage
 
-Current tracker status:
-
 | Area | Status |
 |------|--------|
 | Google Ads API version | `v25` |
-| Implemented services | `90 / 103` |
+| Wrapped services | 97, 366 tools (gaps listed at the end of [`TRACKER.md`](./TRACKER.md)) |
 | Coverage model | 1:1 service mapping where implemented |
 | Type policy | Generated Google Ads protobuf types |
-| Feature parity | [`docs/FEATURE_PARITY.md`](./docs/FEATURE_PARITY.md) |
-| Detailed audit | [`TRACKER.md`](./TRACKER.md) |
 | What this service can do (task-level) | [`docs/CAPABILITIES.md`](./docs/CAPABILITIES.md) |
-| New client setup | [`docs/CLIENT_ONBOARDING.md`](./docs/CLIENT_ONBOARDING.md) |
-| V2 commercial roadmap (not built yet) | [`docs/V2_COMMERCIAL_ROADMAP.md`](./docs/V2_COMMERCIAL_ROADMAP.md) |
+| Platform plan and architecture | [`../docs/ROADMAP.md`](../docs/ROADMAP.md), [`../docs/PLATFORM_ARCHITECTURE.md`](../docs/PLATFORM_ARCHITECTURE.md) |
 
-Core campaign, ad group, ad, budget, keyword, conversion, asset, audience, recommendation, account, billing, and reporting workflows are implemented. The scannable parity table lives in [`docs/FEATURE_PARITY.md`](./docs/FEATURE_PARITY.md); detailed implementation notes live in [`TRACKER.md`](./TRACKER.md).
+Core campaign, ad group, ad, budget, keyword, conversion, asset, audience, recommendation, account, billing, and reporting workflows are implemented; implementation history lives in [`TRACKER.md`](./TRACKER.md).
 
 ## Install
 
@@ -67,19 +62,20 @@ uv sync
 Create a `.env` file or export the required Google Ads credentials:
 
 ```bash
-GOOGLE_ADS_DEVELOPER_TOKEN="placeholder"   # deprecated by Google 2026-09-09; SDK 31.2.0 still requires a value
 GOOGLE_ADS_CLIENT_ID="your_client_id"
 GOOGLE_ADS_CLIENT_SECRET="your_client_secret"
 GOOGLE_ADS_REFRESH_TOKEN="your_refresh_token"
 GOOGLE_ADS_LOGIN_CUSTOMER_ID="optional_manager_customer_id"
 ```
 
-See [`.env.example`](./.env.example) for the full credential template.
+See [`.env.example`](./.env.example) for the full credential template. The quickest way to get the three OAuth values is to download the OAuth client JSON from Google Cloud Console and run `uv run scripts/verify_google_access.py --client-secrets <json> --label me --write-env .env`: it signs you in, writes `.env`, and checks that API access works.
 
 Google removed the developer token on 2026-09-09: API access level now
 belongs to the Google Cloud project that owns your OAuth client, and the
-header is ignored. The variable stays only because the Python SDK still
-validates its presence.
+header is ignored, so there is nothing to configure for it
+(`google-ads` 32.0.0+ does not require one). A manager account is optional:
+set `GOOGLE_ADS_LOGIN_CUSTOMER_ID` only when you reach the account through
+one.
 
 ## Run
 
@@ -129,7 +125,6 @@ Example stdio configuration:
       "args": ["run", "main.py", "--groups", "all"],
       "cwd": "/path/to/google-ads-mcp",
       "env": {
-        "GOOGLE_ADS_DEVELOPER_TOKEN": "placeholder",
         "GOOGLE_ADS_CLIENT_ID": "...",
         "GOOGLE_ADS_CLIENT_SECRET": "...",
         "GOOGLE_ADS_REFRESH_TOKEN": "..."
@@ -173,7 +168,7 @@ When adding a service:
 
 ## License
 
-MIT © [Promobase](https://openpromo.app)
+AGPL-3.0 — see [`LICENSE`](./LICENSE) and [`NOTICE.md`](./NOTICE.md).
 
 ## Disclaimer
 

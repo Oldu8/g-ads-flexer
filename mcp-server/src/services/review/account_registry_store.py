@@ -14,8 +14,8 @@ process-wide singleton, set once at startup from `.env`). An alias only
 works for an account already reachable under this deployment's configured
 manager account (`GOOGLE_ADS_LOGIN_CUSTOMER_ID`) - a genuinely separate
 Google Ads API credential set (its own OAuth refresh token)
-still needs its own `.env`/process; see `docs/CLIENT_ONBOARDING.md` and
-`docs/ACCOUNT_SWITCHING.md`.
+still needs its own `.env`/process; see the 2026-09-06 entry in
+`TRACKER.md`.
 
 Storage is a single JSON file under `snapshots/` (already gitignored -
 same sensitivity class as `pending_changes.json`/`account_sheets.json`:

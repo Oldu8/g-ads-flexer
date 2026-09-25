@@ -1,5 +1,93 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-09-25 (2) — Live-verified: Google sign-in alone gives API access; SDK 33.0.0; v25.2 bid recommendations
+
+**Access premise verified** for `oldu.boo@gmail.com` with
+`scripts/verify_google_access.py` (OAuth client `boo-ua-mcp-desktop`,
+project `178951272716`, console shows **Basic**):
+- C1 no `developer-token` header: 11 accessible customers (request-id
+  `AcIZ3bKqH7jjAmKlDSu24g`); C2 garbage header ignored
+  (`bqmZ7blm4yTaHE7kH-0KiA`).
+- C3 direct access without MCC: boo.ua, Благо, cashpoint.ua, dobron,
+  DOBRON PROM, Oldu_MCC all readable. Five more ids return
+  `CUSTOMER_NOT_ENABLED` (cancelled or never activated accounts); the
+  script now reports those as SKIP, not FAIL.
+- C4 MCC path: walk under `9587322149`, then 5690318342 and 3280605786
+  via `login-customer-id` (`ypvVgtWwfCuEam2kvFjugQ`).
+- C5 `validate_only` budget create on 3280605786 accepted
+  (`BYLLsdqlgBBsCpEzg2V0ew`): writes are permitted at Basic.
+- C6 SDK path without a developer token: PASS on 32.0.0 and on 33.0.0.
+Still open: the agency scenario, a second identity invited to the MCC
+(`../docs/ROADMAP.md`, 0.1 step 3).
+
+**SDK:** `google-ads` 31.2.0 → 32.0.0 (developer token no longer
+required) → 33.0.0 (API v25.2; drops v21/v22, unused). Developer token
+removed from `.env.example`, README, CLAUDE.md and the SDK test fixture.
+
+**Recommendations (v25.2):** `RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW`
+and `LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW` are now selected and
+returned by `get_recommendations` (recommended multiplier + current
+average target), and `apply_recommendation` takes `target_cpa_multiplier`
+(> 1.0) / `target_roas_multiplier` (< 1.0), which Google requires for these
+types; bad or conflicting values are rejected before any API call. The
+new GAQL fields were live-checked on boo.ua and Благо (query accepted);
+neither account has a recommendation of these types today, so parsing and
+apply are covered by unit tests only. Live-verify on the first real one.
+
+**Secrets:** the new client secret was restored into `.env` via
+`--write-env`; the downloaded `client_secret_*.json` was deleted from the
+repo root and `client_secret*.json` added to `.gitignore`. The script got
+`--client-id` (secret via hidden prompt), because Cloud Console no longer
+allows downloading or viewing an existing secret.
+
+## 📋 2026-09-25 — Planning closed; docs consolidated; Google-access verification script
+
+**Planning (2026-09-21 → 09-25, three iterations with the user)** produced
+`../docs/ROADMAP.md` (decisions D1–D16, phases 0/A/B/C/D/E) and three
+OpenSpec changes: `agent-surface-profiles` (Phase A),
+`platform-db-and-cabinet` (Phase B), `hosted-multitenant-writes`
+(Phase C). `remove-developer-token-connection-model` was archived.
+
+**Facts found on the way, all checked in code, not assumed:**
+- Real `tools/list`: `--groups all` = 366 tools / ~86k tokens; the
+  `.mcp.json` groups = 153 / ~39k; the planned `manager` profile = 77 /
+  ~18k.
+- All 99 services cache their GAPIC client on `self` → not tenant-safe;
+  fixed by Phase C task 2.1.
+- FastMCP 2.14.7 sends `InitializeResult` before `on_initialize`
+  middleware sees it → no per-tenant `instructions`; account context
+  moves to an `account_context` tool.
+- None of the 44 write tools in `manager` passes `validate_only`; one gRPC
+  interceptor will force it (and pin the account and count quota).
+- **`google-ads` 32.0.0 (2026-09-09) dropped `developer_token` from
+  required config keys** and only sends the header when set (checked in
+  31.2.0 / 32.0.0 / 33.0.0). Phase C upgrades instead of adding a
+  placeholder.
+- Google's access-levels page lists an **Explorer** level (2,880 ops/day on
+  production accounts) besides Basic; the project's actual level has not
+  been checked since the migration.
+
+**Nothing about the new access model has been verified against the live
+API yet** (this Mac has no `.env`). New
+`scripts/verify_google_access.py` checks each claim (C0 project of the
+OAuth client, C1 no header, C2 garbage header, C3 no MCC, C4 manager path,
+C5 validate_only write, C6 SDK path) and writes a report to `./tmp/`.
+Procedure: `../docs/ROADMAP.md`, Phase 0.1. Record the result here.
+
+**Docs consolidation:** `docs/PLATFORM_ARCHITECTURE.md` rewritten as a
+current-state description (phases moved to the roadmap). Deleted as
+superseded or contradicted by the code: `docs/V2_COMMERCIAL_ROADMAP.md`,
+`docs/FEATURE_PARITY.md`, `docs/AGENT_SURFACE_PLAN.md` (absorbed into the
+Phase A change and the roadmap backlog), `docs/ACCOUNT_SWITCHING.md` and
+`docs/CLIENT_ONBOARDING.md` (the local alias and per-client models; see
+the 2026-09-06 entry below for the alias mechanism, which Phase C removes).
+Also deleted: `src/services/README.md` and `STRUCTURE.md` (hand-kept
+folder lists: "56 services", imports from a non-existent `src.sdk_services`;
+the folders themselves are the index). The old status tables at the
+bottom of this file were replaced by a short
+"Coverage" section. README license line fixed (MIT → AGPL-3.0);
+`CLAUDE.md` rules now say `uv run --extra dev` for ruff/pyright/pytest.
+
 ## 🎯 2026-09-14 — Developer token removed by Google; platform docs re-based, read-only MVP chosen
 
 Google deprecated the developer token on 2026-09-09: the API access level
@@ -1542,359 +1630,25 @@ environment setup, not during a planned migration.
 
 ---
 
-## Overview
-This document tracks the implementation progress of all Google Ads API v25 services in the MCP server.
-Goal: 1:1 mapping of ALL Google Ads services with full type safety using generated protobuf types.
+## Coverage (replaces the old status tables, 2026-09-25)
 
-## Progress Summary
-- Total Services: 110 (audited against the real `google-ads==31.2.0` v25 service list, `.venv/Lib/site-packages/google/ads/googleads/v25/services/services/` — see 2026-08-17 re-audit note above)
-- ✅ Implemented: 97 (88.2%)
-- ❌ Not Implemented: 13 (11.8%)
+What exists is the code: 366 tools across 97 wrapped services (v25),
+listed by `scripts/dump_tools_list.py` once `agent-surface-profiles`
+lands, and by `main.py --groups all` until then. Which of them the agent
+*sees* is decided by tool profiles, not by coverage (`docs/ROADMAP.md`,
+D2/D13).
 
-**2026-09-03 gap-closure update:** started working through the ❌ list for
-full 1:1 coverage (see the dated TRACKER entry below for the batch and the
-remaining backlog). One of the 26 was a stale audit result, not a real gap
-- `data_link` was already fully implemented and mounted; the 2026-08-17
-  audit's single-line grep missed its multi-line `get_service(...)` call.
-  Lesson: re-verify against `main.py`'s actual mount list before trusting
-  a `get_service` grep, not just the service files' existence.
-Six real gaps closed this batch (`ad` via a new `ad_resource_service.py`,
-`campaign_group`, `user_list_customer_type`, `conversion_value_rule_set`,
-`asset_set_asset`, `customer_asset_set`) - 84 + 1 (audit correction) + 6
-(new code) = 91.
+Services the 2026-08-17 audit table listed as not wrapped, none needed by
+the `manager` profile: `asset_generation`, `asset_group_listing_group_filter`,
+`travel_asset_suggestion`, `you_tube_video_upload`,
+`customer_sk_ad_network_conversion_value_schema`, `local_services_lead`,
+`recommendation_subscription`, `benchmarks`, `content_creator_insights`,
+`incentive`, `multi_party_auth_review`, `product_link_invitation`,
+`reservation`, `third_party_app_analytics_link`. Known missing operations:
+`keyword_plan` forecasts (`generate_forecast_curve` / `_time_series` /
+`_metrics`), `reach_plan.generate_reach_forecast`.
 
-**Last Audit Date:** 2026-08-17 (service *list* re-audited by grepping each wrapper's actual `get_service("XxxService")` call, not by filename)
-**Last Migration Date:** 2026-08-11 (mechanical v20→v25 type/import migration, see note above)
-**Audit Method:** Diffed the set of `XxxService` names our 87 `src/services/**/*_service.py` files actually call against the installed v25 package's real service directory.
-**Latest Implementation:** Campaign service refactored for PMax/Search/Display/Shopping/Video with full bidding strategy support. Extension assets (sitelink, callout, structured snippet, call) added to asset service. MaximizeConversionValue bidding strategy added.
-
-## Type Safety Verification
-✅ **ALL implemented services use full v25 type safety:**
-- Proper imports from `google.ads.googleads.v25.services.types.*`
-- Enum types from `google.ads.googleads.v25.enums.types.*`
-- Resource types from `google.ads.googleads.v25.resources.types.*`
-- Type annotations on all methods and parameters
-
-## Implementation Status by Service
-
-Status below reflects the actual `get_service("XxxService")` call each
-`src/services/**/*_service.py` file makes, diffed against the real v25
-service list (110 services) — not filenames, not the old v20 list. See the
-2026-08-17 re-audit note at the top of this file for method.
-
-### Account Management (11 services) — 11 ✅ / 0 ❌
-1. ✅ `account_budget_proposal` - Manage account budget proposals
-2. ✅ `account_link` - Manage account links between accounts
-3. ✅ `billing_setup` - Manage billing setup for accounts
-4. ✅ `customer` - Customer account management
-5. ✅ `customer_client_link` - Links between manager and client accounts
-6. ✅ `customer_manager_link` - Manager account relationships
-7. ✅ `customer_user_access` - User access management
-8. ✅ `customer_user_access_invitation` - User access invitations
-9. ✅ `invoice` - Access billing invoices
-10. ✅ `payments_account` - Payments account management
-11. ✅ `identity_verification` - Identity verification for accounts
-
-### Ad Groups & Ads (13 services) — 13 ✅ / 0 ❌
-1. ✅ `ad` - Standalone Ad resource `mutate_ads`/`get`. **Fixed 2026-09-03**:
-   `src/services/ad_group/ad_service.py` is still mislabeled (calls
-   `AdGroupAdService`, see item 3 below) and was left alone rather than
-   risk breaking its already-mounted, already-tested tools — the real gap
-   was closed with a separate new file instead:
-   `src/services/ad_group/ad_resource_service.py` (`AdResourceService`),
-   mounted as a distinct `"ad_resource"` key, wrapping the actual
-   `AdService.MutateAds`/`get_ad`-via-GAQL for ad-level field updates
-   (final URLs, tracking template, display URL) independent of ad group.
-2. ✅ `ad_group` - Ad group management
-3. ✅ `ad_group_ad` - Ads within ad groups (this is what `ad_service.py` also
-   happens to wrap — duplicate coverage of `ad_group_ad`, not of `ad`)
-4. ✅ `ad_group_ad_label` - Labels for ad group ads
-5. ✅ `ad_group_asset` - Assets for ad groups
-6. ✅ `ad_group_asset_set` - Asset sets for ad groups
-7. ✅ `ad_group_bid_modifier` - Bid modifiers for ad groups
-8. ✅ `ad_group_criterion` - Ad group targeting criteria (also has a
-   `keyword_service.py` convenience wrapper over the same API service —
-   fine, not a second gap)
-9. ✅ `ad_group_criterion_customizer` - Criterion customizers
-10. ✅ `ad_group_criterion_label` - Labels for criteria
-11. ✅ `ad_group_customizer` - Ad group customizers
-12. ✅ `ad_group_label` - Ad group labels
-13. ✅ `ad_parameter` - Ad customizer parameters
-
-### Assets (13 services) — 9 ✅ / 4 ❌
-1. ✅ `asset` - Asset management
-2. ❌ `asset_generation` - AI asset generation (new in v25, unevaluated)
-3. ✅ `asset_group` - Asset group management (Performance Max)
-4. ✅ `asset_group_asset` - Assets within asset groups
-5. ❌ `asset_group_listing_group_filter` - PMax listing group filters
-6. ✅ `asset_group_signal` - Audience signals for asset groups
-7. ✅ `asset_set` - Asset set management
-8. ✅ `asset_set_asset` - Assets within asset sets. **Added 2026-09-03**:
-   `src/services/assets/asset_set_asset_service.py`, mounted as
-   `"asset_set_asset"`.
-9. ✅ `automatically_created_asset_removal` - Opt out of auto-created
-   assets. **Added 2026-09-03**:
-   `src/services/assets/automatically_created_asset_removal_service.py`,
-   mounted as `"automatically_created_asset_removal"`. Single RPC
-   (`remove_campaign_automatically_created_asset`) - opts a campaign out
-   of one specific Google-auto-generated asset (headline, image, etc.)
-   without touching any others.
-10. ✅ `customer_asset` - Customer-level assets
-11. ✅ `customer_asset_set` - Customer asset sets. **Added 2026-09-03**:
-    `src/services/assets/customer_asset_set_service.py`, mounted as
-    `"customer_asset_set"`.
-12. ❌ `travel_asset_suggestion` - Travel-specific asset suggestions
-13. ❌ `you_tube_video_upload` - YouTube video upload for assets (new in v25, unevaluated)
-
-### Audiences & Targeting (10 services) — 10 ✅ / 0 ❌
-1. ✅ `audience` - Audience management
-2. ✅ `audience_insights` - Audience insights and analysis
-3. ✅ `custom_audience` - Custom audiences
-4. ✅ `custom_interest` - Custom interests
-5. ✅ `customer_negative_criterion` - Account-level negative criteria
-6. ✅ `geo_target_constant` - Geographic targeting constants
-7. ✅ `remarketing_action` - Remarketing actions/tags
-8. ✅ `user_list` - User lists for remarketing
-9. ✅ `user_list_customer_type` - Customer types for user lists. **Added
-   2026-09-03**: `src/services/audiences/user_list_customer_type_service.py`,
-   mounted as `"user_list_customer_type"`.
-10. ✅ `keyword_theme_constant` - Keyword theme constants. **Added
-    2026-09-03**: `src/services/audiences/keyword_theme_constant_service.py`,
-    mounted as `"keyword_theme_constant"`. Read-only, single RPC
-    (`suggest_keyword_theme_constants`) - keyword themes are a fixed
-    Google-maintained taxonomy, not account-owned data, so there's no
-    mutate operation to wrap.
-
-### Bidding & Budgets (4 services) — 4 ✅ / 0 ❌
-There is only **one** budget service in v25 (`CampaignBudgetService`); the
-old tracker's "separate `budget` vs `campaign_budget`, v20 has both" entry
-was wrong — confirmed via `get_service` call in `budget_service.py`.
-1. ✅ `bidding_data_exclusion` - Exclude data ranges from smart bidding
-2. ✅ `bidding_seasonality_adjustment` - Seasonal bid adjustments
-3. ✅ `bidding_strategy` - Bidding strategies
-4. ✅ `campaign_budget` (our `budget_service.py`) - Campaign budget management
-
-### Campaigns (17 services) — 17 ✅ / 0 ❌
-1. ✅ `campaign` - Campaign management
-2. ✅ `campaign_asset` - Campaign-level assets
-3. ✅ `campaign_asset_set` - Campaign asset sets
-4. ✅ `campaign_bid_modifier` - Campaign bid modifiers
-5. ✅ `campaign_conversion_goal` - Campaign-specific conversion goals
-6. ✅ `campaign_criterion` - Campaign targeting criteria
-7. ✅ `campaign_customizer` - Campaign customizers
-8. ✅ `campaign_draft` - Campaign drafts for testing
-9. ✅ `campaign_goal_config` - Campaign lifecycle-goal config (new in v25;
-   replaces the old, now-removed `campaign_lifecycle_goal`). **Added
-   2026-09-03**: `src/services/campaign/campaign_goal_config_service.py`,
-   mounted as `"campaign_goal_config"` - links a campaign to a `goal`
-   (below) for campaign-specific lifecycle optimization; built together
-   with `goal` since this resource references it directly.
-10. ✅ `campaign_group` - Campaign groups (grouping campaigns for reporting/
-    goals - not PMax-specific). **Added 2026-09-03**:
-    `src/services/campaign/campaign_group_service.py`, mounted as
-    `"campaign_group"`. Note: `CampaignGroupStatus` only has ENABLED/REMOVED
-    (no PAUSED) - a campaign group can't be paused, only removed.
-11. ✅ `campaign_label` - Campaign labels
-12. ✅ `campaign_shared_set` - Shared sets for campaigns
-13. ✅ `experiment` - Campaign experiments
-14. ✅ `experiment_arm` - Experiment arms/variants
-15. ✅ `smart_campaign_suggest` - Smart campaign suggestions
-16. ✅ `smart_campaign_setting` - Smart campaign settings (distinct from
-    `smart_campaign_suggest`). **Added 2026-09-03**:
-    `src/services/campaign/smart_campaign_setting_service.py`, mounted as
-    `"smart_campaign_setting"` - `get_smart_campaign_status` (serving
-    status + status-specific details) and `update_smart_campaign_setting`
-    (phone, language, landing page, business profile). No create/remove -
-    the setting is created implicitly with the Smart campaign itself.
-17. ✅ `shareable_preview` - Shareable ad previews. **Added 2026-09-03**:
-    `src/services/campaign/shareable_preview_service.py`, mounted as
-    `"shareable_preview"`. Only supports Performance Max asset groups
-    (UI_PREVIEW) and YouTube-live-eligible ads (YOUTUBE_LIVE_PREVIEW) per
-    the proto docstring - other ad types return `UNSUPPORTED_AD_TYPE`.
-    Generates a URL only, doesn't touch account data, but modeled as a
-    mutate-shaped "action" service in the API rather than a search.
-
-### Conversions (11 services) — 10 ✅ / 1 ❌
-1. ✅ `conversion_action` (our `conversion_service.py`) - Conversion actions
-2. ✅ `conversion_adjustment_upload` - Upload conversion adjustments
-3. ✅ `conversion_custom_variable` - Custom variables for conversions
-4. ✅ `conversion_goal_campaign_config` - Campaign conversion goal configs
-5. ✅ `conversion_upload` - Upload conversions
-6. ✅ `conversion_value_rule` - Value rules for conversions
-7. ✅ `conversion_value_rule_set` - Value rule sets. **Added 2026-09-03**:
-   `src/services/conversions/conversion_value_rule_set_service.py`, mounted
-   as `"conversion_value_rule_set"`.
-8. ✅ `custom_conversion_goal` - Custom conversion goals
-9. ✅ `customer_conversion_goal` - Customer-level conversion goals
-10. ❌ `customer_sk_ad_network_conversion_value_schema` - SK Ad Network schema
-11. ✅ `goal` - Customer lifecycle-goal (new in v25; replaces the old,
-    now-removed `customer_lifecycle_goal`). **Added 2026-09-03**:
-    `src/services/conversions/goal_service.py`, mounted as `"goal"`. Only
-    supports create/update - `GoalOperation` has no `remove` field, so
-    there is no way to delete a goal via the API.
-
-### Data Import & Jobs (5 services) — 4 ✅ / 1 ❌
-1. ✅ `batch_job` - Batch job operations
-2. ✅ `data_link` - Data link management (was wrongly marked ❌ - the file,
-   server, and main.py mount all already existed; the 2026-08-17 audit's
-   single-line grep missed its multi-line `get_service(...)` call - see the
-   2026-09-03 gap-closure re-audit note above where this category's header
-   count is also corrected)
-3. ✅ `offline_user_data_job` - Offline user data uploads
-4. ✅ `user_data` - User data operations
-5. ❌ `local_services_lead` - Local services lead data
-
-### Labels & Organization (3 services) — 3 ✅ / 0 ❌
-(`ad_group_label` and `campaign_label` live under their own categories
-above — they're separate services, not counted twice here.)
-1. ✅ `label` - Generic label management
-2. ✅ `customer_label` - Customer-level labels
-3. ✅ `customer_customizer` - Customer-level customizers
-
-### Metadata & Search (2 services) — 2 ✅ / 0 ❌
-`search_service.py` is a convenience wrapper over `GoogleAdsService`, not a
-separate v25 API service — not counted as a distinct entry.
-1. ✅ `google_ads` - Core search/mutate service
-2. ✅ `google_ads_field` - Field metadata
-
-### Planning & Insights (9 services) — 8 ✅ / 1 ❌
-1. ✅ `keyword_plan` - Keyword planning
-2. ✅ `keyword_plan_ad_group` - Keyword plan ad groups
-3. ✅ `keyword_plan_ad_group_keyword` - Keywords in plan ad groups
-4. ✅ `keyword_plan_campaign` - Keyword plan campaigns
-5. ✅ `keyword_plan_campaign_keyword` - Keywords in plan campaigns
-6. ✅ `keyword_plan_idea` - Keyword ideas and research
-7. ✅ `reach_plan` - Reach planning
-8. ✅ `recommendation` - Optimization recommendations
-9. ❌ `recommendation_subscription` - Recommendation subscriptions
-
-### Product Integration & Business Data (9 services) — 2 ✅ / 7 ❌
-v25 added several business-data services (`benchmarks`, `incentive`,
-`multi_party_auth_review`, `reservation`) that didn't exist under the old
-v20-era list at all — nobody has evaluated these yet.
-1. ✅ `brand_suggestion` - Brand suggestions
-2. ❌ `benchmarks` - Industry benchmark data (new in v25, unevaluated)
-3. ❌ `content_creator_insights` - YouTube creator insights
-4. ❌ `incentive` - Account incentives/promotions (new in v25, unevaluated)
-5. ❌ `multi_party_auth_review` - Multi-party authorization review (new in v25, unevaluated)
-6. ✅ `product_link` - Product link management
-7. ❌ `product_link_invitation` - Product link invitations
-8. ❌ `reservation` - Ad reservations (new in v25, unevaluated)
-9. ❌ `third_party_app_analytics_link` - Third-party analytics links
-
-### Shared Resources (3 services) — 3 ✅ / 0 ❌
-1. ✅ `shared_criterion` - Shared criteria
-2. ✅ `shared_set` - Shared sets
-3. ✅ `customizer_attribute` - Customizer attributes (old tracker listed
-   this both ✅ and ❌ due to a copy-paste error — it's ✅, one file)
-
-## API Coverage Analysis
-
-### Fully Implemented Services (1:1 API Coverage)
-Services that implement ALL operations from the Google Ads API:
-
-1. ✅ `google_ads_service` - search, search_stream, mutate, mutate_operation
-2. ✅ `customer_service` - list_accessible_customers, create_customer_client, mutate_customer  
-3. ✅ `campaign_service` - create/update campaigns with full bidding & channel type support (Search, Display, Shopping, Video, PMax)
-4. ✅ `ad_group_service` - mutate_ad_groups (create, update, remove)
-5. ✅ `budget_service` - mutate_campaign_budgets (create, update, remove)
-6. ❌ ~~`ad_service` - mutate_ads, get_ad~~ **WRONG, see 2026-08-17 re-audit note
-   at top.** `src/services/ad_group/ad_service.py` exists but calls
-   `AdGroupAdService`, not `AdService` — it has no `mutate_ads`/`get_ad`
-   methods. Real `AdService` is unimplemented.
-7. ✅ `bidding_strategy_service` - Target CPA, Target ROAS, MaxConversions, MaxConversionValue, Target Impression Share
-8. ✅ `conversion_action_service` - mutate_conversion_actions (create, update, remove)
-9. ✅ `asset_service` - text, image, youtube video, sitelink, callout, structured snippet, call assets
-10. ✅ `user_list_service` - mutate_user_lists (create, update, remove)
-
-### Partially Implemented Services
-Services missing some operations:
-
-1. ⚠️ `keyword_plan_service` - Missing: generate_forecast_curve, generate_forecast_time_series, generate_forecast_metrics
-2. ⚠️ `reach_plan_service` - Missing: generate_reach_forecast
-3. ⚠️ `recommendation_service` - Missing: dismiss_recommendation
-
-### Recent Enhancements (2026-03-22)
-
-**Campaign Service (MAJOR):**
-- `create_campaign` now supports ALL channel types: SEARCH, DISPLAY, SHOPPING, VIDEO, PERFORMANCE_MAX
-- Supports all bidding strategies: MANUAL_CPC, TARGET_CPA, TARGET_ROAS, MAXIMIZE_CONVERSIONS, MAXIMIZE_CONVERSION_VALUE, TARGET_SPEND, TARGET_IMPRESSION_SHARE, PORTFOLIO
-- `advertising_channel_sub_type` parameter added
-- Network settings are conditional (skipped for PMax)
-- `update_campaign` now supports changing bidding strategies
-
-**Asset Service (NEW extension types):**
-- `create_sitelink_asset` - Sitelink extensions with link text, descriptions, and final URLs
-- `create_callout_asset` - Callout extensions
-- `create_structured_snippet_asset` - Structured snippet extensions with headers and values
-- `create_call_asset` - Call extensions with country code and phone number
-
-**Bidding Strategy Service (NEW):**
-- `create_maximize_conversion_value_strategy` - MaximizeConversionValue with optional target ROAS
-
-## Next Steps
-
-(Superseded by the 2026-08-17 re-audit — the list below is current as of
-that pass. 26 real gaps remain; grouped by how likely they matter for a
-write/automation use case, not by API category.)
-
-### High Priority
-1. `ad` (`AdService`) - the mislabeled gap found this pass. Real service is
-   update-only (`mutate_ads`, no create/remove) but it's the only way to
-   touch ad-level fields (e.g. `final_urls`) without going through
-   `AdGroupAdService`'s combined ad+ad_group_ad object — worth its own
-   correctly-named wrapper.
-2. `campaign_group`, `campaign_goal_config`, `goal` - if the eventual
-   write/automation service (see CLAUDE.md CURRENT TASK) needs to set
-   target ROAS/CPA at a cross-campaign or account level, these are likely
-   load-bearing; check before assuming `campaign`/`bidding_strategy` cover it.
-3. `asset_set_asset`, `customer_asset_set`, `asset_group_listing_group_filter` -
-   PMax asset-group plumbing; PMax campaigns already have partial coverage
-   (`asset_group`, `asset_group_asset`, `asset_group_signal`) but these
-   linking services are what actually attach assets/listing filters to a
-   PMax asset group.
-
-### Medium Priority
-1. `conversion_value_rule_set`, `data_link`, `recommendation_subscription`,
-   `user_list_customer_type`, `keyword_theme_constant`
-2. Newly-added-in-v25, unevaluated (`asset_generation`,
-   `automatically_created_asset_removal`, `you_tube_video_upload`) - check
-   whether these are read-only reporting or actually mutate-capable before
-   prioritizing.
-
-### Low Priority
-1. `smart_campaign_setting`, `shareable_preview` - Smart Campaigns / ad
-   previews, unlikely to matter for boo.ua's account.
-2. `content_creator_insights`, `third_party_app_analytics_link`,
-   `product_link_invitation`, `local_services_lead`,
-   `customer_sk_ad_network_conversion_value_schema` - specialized/vertical
-   features (YouTube creators, app analytics, Local Services Ads, iOS SKAN)
-   not relevant to a standard Search/PMax/Shopping account.
-3. `benchmarks`, `incentive`, `multi_party_auth_review`, `reservation` -
-   new in v25, unevaluated; likely low-value for automation (benchmarks/
-   incentive read informational data, reservation/multi_party_auth_review
-   sound account-admin-flow-specific rather than campaign-management).
-
-Also still open, pre-existing and unrelated to this pass: the 3 partial
-services under "Partially Implemented Services" above (`keyword_plan`,
-`reach_plan`, `recommendation` — each missing specific operations, not
-whole services) weren't re-verified this round either.
-
-## Implementation Guidelines
-
-1. **Type Safety**: ALL implementations MUST use v20 protobuf types
-2. **Testing**: Each service MUST have comprehensive tests
-3. **Structure**: Follow pattern in `src/sdk_services/<category>/<service>_service.py`
-4. **MCP Tools**: Create lightweight wrappers converting strings to enums
-5. **Documentation**: Include examples and operation descriptions
-6. **Error Handling**: Proper GoogleAdsException handling
-
-## Notes for Contributors
-
-When implementing a new service:
-1. Check the v20 service types in google-ads-python
-2. Implement ALL operations for 1:1 API coverage
-3. Use full type annotations with v20 types
-4. Write comprehensive tests
-5. Update this tracker immediately
-6. Run `uv run ruff format .` and `uv run pyright`
+The earlier "Overview / Implementation Status / Next Steps / Guidelines"
+sections were removed on 2026-09-25: they contradicted the code (e.g.
+`dismiss_recommendation` listed as missing, v20 types required) and are in
+git history if ever needed.

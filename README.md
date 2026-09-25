@@ -1,14 +1,13 @@
 # Google Ads AI platform (name TBD)
 
-A monorepo with two parts:
+An AI PPC assistant for Google Ads with guardrails and memory, delivered
+over MCP. A monorepo with two apps that meet only in one Postgres database:
 
-- [`mcp-server/`](./mcp-server/) — Python. A Google Ads MCP server: ~100
-  MCP tools giving an LLM full, typed access to the Google Ads API. See
-  [`mcp-server/README.md`](./mcp-server/README.md) for setup and usage.
-- `web/` — Next.js (not started yet). The product surface: landing page,
-  login, account dashboard, per-account MCP endpoint + bearer-token
-  issuance.
+- [`mcp-server/`](./mcp-server/) — Python. The Google Ads MCP server (366
+  typed tools over the Google Ads API, exposed through curated profiles).
+- [`web/`](./web/) — Next.js. Sign-in with Google, account discovery,
+  per-account MCP token. Not started yet.
 
-See [`docs/PLATFORM_ARCHITECTURE.md`](./docs/PLATFORM_ARCHITECTURE.md) for
-the full multi-tenant architecture and phased build plan, and
-[`CLAUDE.md`](./CLAUDE.md) for why the repo is split this way.
+Start with [`docs/ROADMAP.md`](./docs/ROADMAP.md) (what is being built and in
+what order) and [`docs/PLATFORM_ARCHITECTURE.md`](./docs/PLATFORM_ARCHITECTURE.md)
+(how it works).

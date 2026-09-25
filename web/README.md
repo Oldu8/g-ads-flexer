@@ -1,26 +1,22 @@
 # web (not started)
 
-Next.js app — the product surface for the platform described in
-[`../docs/PLATFORM_ARCHITECTURE.md`](../docs/PLATFORM_ARCHITECTURE.md).
+The Next.js side of the platform. Phase B of [`../docs/ROADMAP.md`](../docs/ROADMAP.md);
+full spec in [`../openspec/changes/platform-db-and-cabinet/`](../openspec/changes/platform-db-and-cabinet/).
 
-Planned scope (see that doc for the full picture):
+Scope of the first version (a minimal cabinet, nothing else):
 
-- Landing page, pricing, blog (SEO), terms of use, privacy policy
-- Login via Google OAuth (Auth.js + Google provider), requesting the
-  `adwords` scope in the same consent grant used to identify the user.
-  No developer token, no MCC prerequisite (Google removed the developer
-  token on 2026-09-09; access level lives on our Cloud project)
-- Dashboard (one screen for the MVP): account discovery via
-  `list_accessible_customers` + a `customer_client` walk, checkboxes for
-  which accounts to expose, bearer token + MCP URL per account, a
-  per-account business-context textarea, and the fixes-log Google Sheet
-  id per account (one sheet per client per ad account)
-- Phase 0, before any of the above: static homepage + privacy policy +
-  terms, needed for Cloud-project brand verification and `adwords`
-  scope verification
-- Not in the MVP: pricing page, billing, blog
-- Owns the Postgres (Supabase) schema — the Python MCP server
-  (`../mcp-server/`) only reads from it, never writes
+- Sign-in with Google (Auth.js v5). The same consent grants the `adwords`
+  scope, offline. The refresh token is stored AES-256-GCM encrypted only.
+- Account discovery over the Google Ads REST API
+  (`listAccessibleCustomers` + a `customer_client` walk), a checkbox list,
+  one `ad_accounts` row per exposed account.
+- Per account: bearer token shown once, MCP URL, enabled, "allow changes"
+  (`read_only` / `manager`), business context, fixes-log sheet id.
 
-Nothing here yet — set up the Next.js project in this directory when
-starting Phase 2.
+This app **owns the database schema and every migration** (Drizzle),
+including `pending_changes` and `api_usage`, which the Python MCP server
+writes to. Deployed on Railway. It must use the same Google OAuth client
+as the MCP server.
+
+Not in the first version: landing page, pricing, blog, billing, a
+pending-change dashboard.

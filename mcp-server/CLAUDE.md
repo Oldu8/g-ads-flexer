@@ -1,58 +1,63 @@
 ## Objective
 
-You're working on google-ads-mcp project, it's a MCP(model context protocal) server that wraps the google ads api for LLM's interaction. You will use the tools to search, fetch web page contents to read the docs, and implement.
+A Python MCP server wrapping the Google Ads API (v25) for LLMs. Two layers:
 
-### about google ads api
+- **Coverage (the library):** `src/services/` wraps Google Ads services
+  1:1, fully typed with the SDK's generated protobuf types. 366 tools
+  today. Keep coverage growing where it is useful.
+- **Exposure (what the agent sees):** a curated **profile**, not
+  everything. See `../docs/PLATFORM_ARCHITECTURE.md` ("Tool surface")
+  and `openspec/changes/agent-surface-profiles/`. Adding a tool to a
+  profile is a product decision with a token cost; adding a tool to the
+  library is not.
 
-google ads offers it's own client sdk as well as REST api. Client one has python sdk, built on top of protobuf schema. REST api does not have any existing openapi specs but referenec docs.
-we decided to go with python sdk, since it's well maintained and does most of the heavy lifting, i.e. retries, pagination, etc.
+We use the Python SDK (`google-ads`), not REST: it handles retries,
+pagination and typing. The one exception is
+`scripts/verify_google_access.py`, which uses REST on purpose so it can
+control headers exactly.
 
-**Developer token is gone (Google, 2026-09-09).** Access level now belongs to the
-Google Cloud project owning the OAuth client (ours: `178951272716`, Basic =
-15,000 ops/day shared by all tenants); the `developer-token` header is ignored
-and a future major API version will reject it. `google-ads==31.2.0` still
-requires the config key and still sends the header, so `.env` keeps a
-placeholder value only to satisfy SDK validation - never treat it as a secret
-or a per-tenant value, never add it to any schema/onboarding, and remove it
-once the SDK makes it optional. Full platform consequences (connection model,
-quota accounting, phases) live in `../docs/PLATFORM_ARCHITECTURE.md`.
+## Google access facts (2026-09-09 onwards)
 
-## resources
+- **No developer token.** The access level belongs to the Cloud project
+  that owns the OAuth client (ours: `178951272716`). The header is ignored
+  now and will be rejected by a future major API version.
+- The repo uses `google-ads` **33.0.0** (API v25.2); 32.0.0 was the first
+  release that does not require `developer_token`. Never add a developer token back anywhere: no
+  env var, no config key, no schema column.
+- **No MCC needed** for API access; `login-customer-id` only when access
+  goes through a manager.
+- Verified against the live API on 2026-09-25 (operator identity) with
+  `scripts/verify_google_access.py`; re-run it after any auth change.
 
-here are some high level resources:
+## Resources
 
-1. read the `./refs/googleads.llms.txt` for resources related to google ads api
-2. use the `./refs/fastmcp.llms.txt` for full list of docs on how mcp server works.
-3. use the cloudflare tools fetch urls via md/html, which is cleaner and easy to digest.
-4. you have access to `google-ads-python` which contains source code for the python sdk, as well as all the types generated from protocol buffers.
+1. `./refs/googleads.llms.txt` — Google Ads API docs index.
+2. `./refs/fastmcp.llms.txt` — FastMCP docs index. The installed version
+   is 2.14.7; check the package source in `.venv` before relying on a
+   feature from newer docs.
+3. The installed `google-ads` package in `.venv` — SDK source and every
+   generated type.
 
-## RULES
+## Rules
 
-1. we use `uv` for pagkage management, see `pyproject.toml` for details & configs.
-2. after changes run `uv run ruff format .`and `uv run pyright`
-3. Our goal is to provide 1:1 mapping to ALL google ads services, and wrap them to MCP tools for LLMs to interact with. You can use files to help you track progress. use the API reference or the google-ads python codebase to read all the services available, and implement it. For each service, implement tests and make sure they pass. The implementation should be FULLY typed, using generated types from google ads v20 services.
-4. Never write scratch/output text files (audit dumps, keyword lists, campaign reports, ID lists, etc.) into the project root - they end up as untracked clutter in `git status` every session. Write them to `./tmp/` instead (create it if missing), named `YYYY-MM-DD_<account-or-campaign>_<what-it-is>.txt` (e.g. `2026-09-04_boo-ua_keyword-audit-90d.txt`) so a later session can tell what a file is and reuse it without opening it first. `./tmp/` is gitignored - never `git add` anything from it.
+1. `uv` for everything; see `pyproject.toml`.
+2. After changes: `uv run --extra dev ruff format .`,
+   `uv run --extra dev pyright`, `uv run --extra dev pytest`. (Without
+   `--extra dev` these tools are not installed.)
+3. New services and tools: fully typed with v25 generated types, with
+   tests. Register every new tool in the tool registry once it exists
+   (Phase A); the surface test fails otherwise.
+4. Never write scratch/output files (audit dumps, keyword lists, reports,
+   id lists) into the project root. Use `./tmp/` (gitignored), named
+   `YYYY-MM-DD_<account-or-campaign>_<what-it-is>.<ext>`, e.g.
+   `2026-09-04_boo-ua_keyword-audit-90d.txt`. Never `git add` anything
+   from it.
+5. Record what you did and why as a dated entry at the top of
+   `TRACKER.md`, so the next agent can pick it up.
 
-## CURRENT TASK
+## Current task
 
-Here is the current task you're working on. Prioritize this over everything else.
-
-We're in the middle of creating MCP tools based on google ads api. We need to ensure 1:1 mapping and fully type safe. You will create a `TRACKER.md`, list down all the existing services in google-ads-python, and then audit the current progress and mark them. Start with everything as "not impl". Next, we will start one by one.
-
-FOR each service, we will using the generated proto buf types, fully annotate the endpoints/operations, and create lightweight tools for MCP. Some existing implementations might exist, but theymight NOT be ideal, since we need to ensure the inputs & outputs are fully using generated types for consistency. After you implement each service, write tests to cover it. Next, move on to next service until we're done. NOTE, we only focus on google ads **V25** api (see below — this was V20 originally; V20 is now sunset), only implement services exist.
-
-**2026-08-11 update — target API version changed from V20 to V25.** V20 was
-sunset by Google on 2026-06-10 and now hard-fails every live call with
-`UNSUPPORTED_VERSION`; this was discovered while validating real credentials
-against the boo.ua account, not as a planned migration. `google-ads` dep was
-bumped to `31.2.0` and all `v20` import paths / `version="v20"` calls in
-`src/` and `tests/` were mechanically replaced with `v25`. Type/shape drift
-between v20 and v25 was fixed only where it broke `pyright` or `pytest` (two
-files: `audience_insights_service.py`, `campaign_service.py`) — the service
-list in `TRACKER.md` itself has **not** been re-audited against what v25
-actually offers. See the migration note at the top of `TRACKER.md` for full
-detail before continuing service-by-service work — don't assume every
-"✅ Implemented" entry is still accurate without spot-checking against the
-current v25 protos.
-
-in the `TRACKER.md`, note down the task you're working on and high level steps. so that other agents can pick it up from you easily w/ context.
+Implement the roadmap: `../docs/ROADMAP.md` gives the order;
+each phase is an OpenSpec change under `../openspec/changes/` with its own
+`tasks.md`. On this side: Phase A (`agent-surface-profiles`), then Phase C
+(`hosted-multitenant-writes`) once the cabinet and database exist.

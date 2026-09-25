@@ -2,8 +2,8 @@
 
 A capability guide, not a service inventory - answers "can I get X done"
 from a marketer's perspective when setting up or running an account. For
-the exhaustive 110-service technical breakdown, see
-[`TRACKER.md`](../TRACKER.md) / [`FEATURE_PARITY.md`](./FEATURE_PARITY.md)
+the exhaustive technical breakdown, see
+the code and the "Coverage" section of [`TRACKER.md`](../TRACKER.md)
 instead - this file stays at the task level on purpose.
 
 **Update this whenever a real capability question gets resolved by actually

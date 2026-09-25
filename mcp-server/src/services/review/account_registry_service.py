@@ -137,7 +137,7 @@ def create_account_registry_tools(
         verify this deployment's credentials can actually reach it (the
         account must be linked under this deployment's configured
         manager account - GOOGLE_ADS_LOGIN_CUSTOMER_ID - or a separate
-        credential set is needed instead, see docs/ACCOUNT_SWITCHING.md).
+        credential set is needed instead, see TRACKER.md, 2026-09-06).
 
         Args:
             alias: Short human name, e.g. "boo-ua"

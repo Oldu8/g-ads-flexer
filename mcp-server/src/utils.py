@@ -50,8 +50,9 @@ def format_customer_id(customer_id: str) -> str:
     registered via `account_registry_service.py` instead of the raw
     numeric id - resolved here, the one place every service already calls
     before touching `customer_id`, so every existing tool gets alias
-    support with no signature changes anywhere. See
-    `docs/ACCOUNT_SWITCHING.md` for the full picture.
+    support with no signature changes anywhere. Local-only; the hosted
+    entrypoint pins the account by bearer token instead (see TRACKER.md,
+    2026-09-06).
 
     Args:
         customer_id: A raw customer ID ("123-456-7890" or "1234567890"),
