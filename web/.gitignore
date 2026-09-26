@@ -42,3 +42,7 @@ next-env.d.ts
 
 # example env file is committed
 !.env.example
+
+# The root .gitignore (Python template) ignores every `lib/` directory;
+# this app keeps shared code in src/lib, so re-include it.
+!src/lib/
