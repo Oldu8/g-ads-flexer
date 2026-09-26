@@ -1,22 +1,29 @@
-# web (not started)
+# web
 
-The Next.js side of the platform. Phase B of [`../docs/ROADMAP.md`](../docs/ROADMAP.md);
-full spec in [`../openspec/changes/platform-db-and-cabinet/`](../openspec/changes/platform-db-and-cabinet/).
+The Next.js side of the platform (working name **adsmigo**): public pages,
+sign-in, the user's cabinet and an operator-only admin. It shares one
+Postgres database with `../mcp-server/` and owns its schema.
 
-Scope of the first version (a minimal cabinet, nothing else):
+Plan and status: [`../docs/ROADMAP.md`](../docs/ROADMAP.md), web tracks B0–B6.
 
-- Sign-in with Google (Auth.js v5). The same consent grants the `adwords`
-  scope, offline. The refresh token is stored AES-256-GCM encrypted only.
-- Account discovery over the Google Ads REST API
-  (`listAccessibleCustomers` + a `customer_client` walk), a checkbox list,
-  one `ad_accounts` row per exposed account.
-- Per account: bearer token shown once, MCP URL, enabled, "allow changes"
-  (`read_only` / `manager`), business context, fixes-log sheet id.
+| Track | Status |
+|---|---|
+| B0 skeleton: Next.js + Tailwind, routes, Railway, domain | done |
+| B1 database and Google sign-in | next |
+| B2 cabinet · B3 landing · B4 legal pages · B5 admin · B6 blog | planned |
 
-This app **owns the database schema and every migration** (Drizzle),
-including `pending_changes` and `api_usage`, which the Python MCP server
-writes to. Deployed on Railway. It must use the same Google OAuth client
-as the MCP server.
+## Run locally
 
-Not in the first version: landing page, pricing, blog, billing, a
-pending-change dashboard.
+```bash
+cp .env.example .env.local
+npm install
+npm run dev          # http://localhost:3000
+```
+
+Checks: `npm run lint`, `npm run typecheck`, `npm run build`.
+
+## Deploy
+
+Railway project with a `web` service built from this directory
+(`npm run build`, `npm start`, health check `/api/health`), served at
+`https://ads.vtrata.com`. Variables: see `.env.example`.
