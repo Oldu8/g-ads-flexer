@@ -24,6 +24,12 @@ Checks: `npm run lint`, `npm run typecheck`, `npm run build`.
 
 ## Deploy
 
-Railway project with a `web` service built from this directory
-(`npm run build`, `npm start`, health check `/api/health`), served at
-`https://ads.vtrata.com`. Variables: see `.env.example`.
+Railway project `adsmigo`, service `web`, region EU West (Amsterdam),
+configured by `railway.json` (Railpack, `npm start`, health check
+`/api/health`). Served at `https://ads.vtrata.com` (Cloudflare: CNAME +
+`_railway-verify` TXT, DNS only) and `https://web-production-0e5a7.up.railway.app`.
+Variables: see `.env.example`.
+
+Deploys are manual for now, from this directory: `railway up --service web --ci`.
+Once GitHub is connected in the Railway UI (source `Oldu8/g-ads-flexer`,
+branch `main`, root directory `/web`), pushes to `main` deploy automatically.
