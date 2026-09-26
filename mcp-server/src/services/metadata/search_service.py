@@ -14,9 +14,11 @@ from google.ads.googleads.v25.services.types.google_ads_service import (
 
 from src.sdk_client import get_sdk_client
 from src.utils import (
+    ensure_gaql_limit,
     format_ads_error,
     format_customer_id,
     get_logger,
+    row_cap,
     serialize_proto_message,
 )
 
@@ -294,9 +296,13 @@ class SearchService:
             # always paginates at a fixed 10000 rows, so it must be left
             # unset (the GoogleAdsServiceClient iterator still auto-paginates
             # across multiple pages transparently).
+            # A query without LIMIT gets one (cap + 1, so the response
+            # envelope can tell a truncated list from a complete one); an
+            # existing LIMIT is kept. Google then stops at that many rows,
+            # so a huge keyword_view never pages through in full.
             request = SearchGoogleAdsRequest()
             request.customer_id = customer_id
-            request.query = query
+            request.query = ensure_gaql_limit(query, row_cap() + 1)
 
             # Execute search
             response = self.client.search(request=request)

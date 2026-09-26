@@ -14,7 +14,6 @@ from google.ads.googleads.v25.services.services.google_ads_service import (
     GoogleAdsServiceClient,
 )
 from google.ads.googleads.v25.services.types.google_ads_service import (
-    GoogleAdsRow,
     MutateGoogleAdsRequest,
     MutateGoogleAdsResponse,
     MutateOperation,
@@ -31,6 +30,8 @@ from src.utils import (
     format_customer_id,
     format_partial_failure_error,
     get_logger,
+    list_envelope,
+    row_cap,
     serialize_proto_message,
 )
 
@@ -60,19 +61,22 @@ class GoogleAdsService:
         ctx: Context,
         customer_id: str,
         query: str,
-        page_size: int = 1000,
         page_token: Optional[str] = None,
         validate_only: bool = False,
         summary_row_setting: SummaryRowSettingEnum.SummaryRowSetting = SummaryRowSettingEnum.SummaryRowSetting.NO_SUMMARY_ROW,
     ) -> Dict[str, Any]:
-        """Execute a GAQL query and return paginated results.
+        """Execute a GAQL query and return one page of results.
+
+        API v25 pages at a fixed 10,000 rows and rejects a client page size.
+        The returned page is capped at the response row cap; when it is
+        truncated, `next_page_token` is withheld (continuing from it would
+        silently skip the rest of this page) and the query must be narrowed.
 
         Args:
             ctx: FastMCP context
             customer_id: The customer ID
             query: The GAQL (Google Ads Query Language) query
-            page_size: Number of results per page (max 10000)
-            page_token: Token for pagination
+            page_token: Token of the page to fetch (from a previous call)
             validate_only: If true, only validates the query
             summary_row_setting: Whether to include summary row
 
@@ -102,11 +106,12 @@ class GoogleAdsService:
             # Execute search
             response = self.client.search(request=request)
 
-            # Process results
-            results: List[Dict[str, Any]] = []
-            row: GoogleAdsRow
-            for row in response.results:
-                results.append(serialize_proto_message(row))
+            # The client returns a pager; `.results` / `.next_page_token` are
+            # the first page's. Cap that page like every other list result.
+            page = list_envelope(
+                (serialize_proto_message(row) for row in response.results),
+                row_cap(),
+            )
 
             # Include summary row if present
             summary_row = None
@@ -114,8 +119,13 @@ class GoogleAdsService:
                 summary_row = serialize_proto_message(response.summary_row)
 
             return {
-                "results": results,
-                "next_page_token": response.next_page_token,
+                "results": page["items"],
+                "returned": page["returned"],
+                "truncated": page["truncated"],
+                **({"warning": page["warning"]} if page["truncated"] else {}),
+                "next_page_token": None
+                if page["truncated"]
+                else response.next_page_token,
                 "total_results_count": response.total_results_count,
                 "summary_row": summary_row,
                 "field_mask": response.field_mask.paths if response.field_mask else [],
@@ -267,7 +277,6 @@ def create_google_ads_tools(
         ctx: Context,
         customer_id: str,
         query: str,
-        page_size: int = 1000,
         page_token: Optional[str] = None,
         validate_only: bool = False,
         include_summary_row: bool = False,
@@ -277,7 +286,6 @@ def create_google_ads_tools(
         Args:
             customer_id: The customer ID
             query: The GAQL (Google Ads Query Language) query
-            page_size: Number of results per page (max 10000)
             page_token: Token for pagination from previous response
             validate_only: If true, only validates the query
             include_summary_row: If true, includes summary row with totals
@@ -300,7 +308,6 @@ def create_google_ads_tools(
             ctx=ctx,
             customer_id=customer_id,
             query=query,
-            page_size=page_size,
             page_token=page_token,
             validate_only=validate_only,
             summary_row_setting=summary_row_setting,

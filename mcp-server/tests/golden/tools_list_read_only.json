@@ -1,0 +1,1795 @@
+[
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List ad group ads.\n\nArgs:\n    customer_id: The customer ID\n    ad_group_id: Optional ad group ID to filter by\n    include_policy_data: Whether to include policy approval and review status\n    limit: Maximum number of results\n\nReturns:\n    List of ad group ads with details",
+    "inputSchema": {
+      "properties": {
+        "ad_group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "include_policy_data": {
+          "default": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "ad_group_ad_list_ad_group_ads",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List ad group assets.\n\nArgs:\n    customer_id: The customer ID\n    ad_group_id: Optional ad group ID to filter by\n    field_type: Optional field type to filter by (e.g., SITELINK, CALLOUT)\n    campaign_id: Optional campaign ID to filter by\n    include_system_managed: Whether to include system-managed assets\n\nReturns:\n    List of ad group assets with details",
+    "inputSchema": {
+      "properties": {
+        "ad_group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "campaign_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "field_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "include_system_managed": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "ad_group_asset_list_ad_group_assets",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Get an ad's ad-level fields by ID.\n\nArgs:\n    customer_id: The customer ID\n    ad_id: The ad ID\n\nReturns:\n    Ad details, or an empty dict if not found",
+    "inputSchema": {
+      "properties": {
+        "ad_id": {
+          "type": "string"
+        },
+        "customer_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "ad_id"
+      ],
+      "type": "object"
+    },
+    "name": "ad_resource_get_ad",
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List ad group bid modifiers.\n\nArgs:\n    customer_id: The customer ID\n    ad_group_id: Optional ad group ID to filter by\n    campaign_id: Optional campaign ID to filter by\n\nReturns:\n    List of ad group bid modifiers with criterion details",
+    "inputSchema": {
+      "properties": {
+        "ad_group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "campaign_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "ag_bid_mod_list_ad_group_bid_modifiers",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Search for assets in the account.\n\nArgs:\n    customer_id: The customer ID\n    asset_types: Optional list of asset types to filter by (TEXT, IMAGE, YOUTUBE_VIDEO)\n    limit: Maximum number of results\n\nReturns:\n    List of asset details",
+    "inputSchema": {
+      "properties": {
+        "asset_types": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "asset_search_assets",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Generate detailed composition insights for a specific audience.\n\nArgs:\n    customer_id: The customer ID\n    audience_countries: Country location IDs (e.g., [\"2840\"] for US)\n    dimensions: Dimensions to analyze (AGE_RANGE, GENDER, LOCATION, USER_INTEREST, etc.)\n    audience_ages: Optional age ranges\n    audience_genders: Optional genders\n    audience_user_interests: Optional user interest IDs\n    audience_attribute_groups: Optional custom attribute groups\n\nReturns:\n    Detailed audience composition with affinity scores and demographic breakdowns",
+    "inputSchema": {
+      "properties": {
+        "audience_ages": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "audience_attribute_groups": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "audience_countries": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "audience_genders": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "audience_user_interests": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "dimensions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "customer_id",
+        "audience_countries",
+        "dimensions"
+      ],
+      "type": "object"
+    },
+    "name": "audience_insights_generate_audience_composition_insights",
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Generate targeting suggestions for reaching similar audiences.\n\nArgs:\n    customer_id: The customer ID\n    audience_countries: Country location IDs (e.g., [\"2840\"] for US)\n    audience_ages: Optional age ranges\n    audience_genders: Optional genders\n    audience_user_interests: Optional user interest IDs\n\nReturns:\n    Suggested user interests and targeting options for similar audiences",
+    "inputSchema": {
+      "properties": {
+        "audience_ages": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "audience_countries": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "audience_genders": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "audience_user_interests": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "audience_countries"
+      ],
+      "type": "object"
+    },
+    "name": "audience_insights_generate_suggested_targeting_insights",
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List audiences.\n\nArgs:\n    customer_id: The customer ID\n    include_removed: Whether to include removed audiences\n    limit: Maximum number of results\n\nReturns:\n    List of audiences with details",
+    "inputSchema": {
+      "properties": {
+        "customer_id": {
+          "type": "string"
+        },
+        "include_removed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "audience_list_audiences",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List campaign assets.\n\nArgs:\n    customer_id: The customer ID\n    campaign_id: Optional campaign ID to filter by\n    field_type: Optional field type to filter by (e.g., SITELINK, CALLOUT)\n    include_system_managed: Whether to include system-managed assets\n\nReturns:\n    List of campaign assets with details",
+    "inputSchema": {
+      "properties": {
+        "campaign_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "field_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "include_system_managed": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "campaign_asset_list_campaign_assets",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List campaign bid modifiers (interaction type only).\n\nNote: This only lists interaction type bid modifiers. For device, location,\ndemographic, and ad schedule bid modifiers, use the campaign criterion service.\n\nArgs:\n    customer_id: The customer ID\n    campaign_id: Optional campaign ID to filter by\n\nReturns:\n    List of campaign bid modifiers with interaction type details",
+    "inputSchema": {
+      "properties": {
+        "campaign_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "campaign_bid_modifier_list_campaign_bid_modifiers",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List campaign shared set attachments.\n\nArgs:\n    customer_id: The customer ID\n    campaign_id: Optional campaign ID to filter by\n    shared_set_id: Optional shared set ID to filter by\n    shared_set_type: Optional shared set type to filter by (NEGATIVE_KEYWORDS, NEGATIVE_PLACEMENTS)\n\nReturns:\n    List of campaign shared sets with details",
+    "inputSchema": {
+      "properties": {
+        "campaign_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "shared_set_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "shared_set_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "campaign_shared_set_list_campaign_shared_sets",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List all custom audiences in the account.\n\nArgs:\n    customer_id: The customer ID\n    type_filter: Optional filter by type\n    status_filter: Optional filter - ENABLED or REMOVED\n\nReturns:\n    List of custom audiences with basic details",
+    "inputSchema": {
+      "properties": {
+        "customer_id": {
+          "type": "string"
+        },
+        "status_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "custom_audience_list_custom_audiences",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List all customer negative criteria.\n\nArgs:\n    customer_id: The customer ID\n    criterion_type: Optional filter by type - KEYWORD, PLACEMENT, or CONTENT_LABEL\n\nReturns:\n    List of customer negative criteria with details",
+    "inputSchema": {
+      "properties": {
+        "criterion_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "customer_negative_criterion_list_negative_criteria",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Read back every row currently in one account's fixes-log sheet.\n\nArgs:\n    customer_id: The ad account whose sheet to read",
+    "inputSchema": {
+      "properties": {
+        "customer_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "fixes_log_list_fixes",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Append a new fix record to the fixes-log Google Sheet. Call this\nright after applying a live change to a managed account.\n\nArgs:\n    customer_id: The ad account this fix belongs to - one account\n        always maps to exactly one sheet, never shared across\n        accounts\n    fix_id: A proposed id for this fix (e.g. \"F-20260827-01\") - if\n        another row already uses it (a concurrent session on the\n        same account may have picked the same \"F-<today>-NN\"\n        independently), a letter suffix is added automatically and\n        a new row is appended under that id instead. Check the\n        returned `fix_id` - use it, not what you passed in, for any\n        later review update\n    what: Short label for what changed\n    fix_text: What was actually done - **1-2 sentences only**: what\n        changed, a count, the scope (campaign/ad group/list). No\n        backstory/rationale, no enumerating individual keywords (name\n        one only if something was done specifically to it, e.g. a\n        bid raise), no describing the propose/apply process. End\n        with a bare `change_ids: ...` or `ids: ...` line pointing at\n        the durable detail (pending_changes.json, or the live\n        list/campaign) - that pointer is what makes the brevity safe.\n    when: Date the change was made - **must be YYYY-MM-DD**, e.g.\n        \"2026-08-27\", no other format accepted (a later review\n        parses this to compute elapsed days)\n    expectation: Which metric should move and in which direction -\n        one sentence, no restated stats (those are re-derivable live)\n    status: Initial status text (defaults to \"Collecting data\")\n    account_name: The account's descriptive name (e.g. \"boo.ua\") -\n        only used the very first time this account's sheet is\n        touched, to title it \"{account_name} - {customer_id} -\n        Fixes Log\"; harmless to pass every time, ignored once\n        already initialized",
+    "inputSchema": {
+      "properties": {
+        "account_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "expectation": {
+          "type": "string"
+        },
+        "fix_id": {
+          "type": "string"
+        },
+        "fix_text": {
+          "type": "string"
+        },
+        "status": {
+          "default": "Collecting data",
+          "type": "string"
+        },
+        "what": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "fix_id",
+        "what",
+        "fix_text",
+        "when",
+        "expectation"
+      ],
+      "type": "object"
+    },
+    "name": "fixes_log_log_fix",
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Write the final \"Conclusion\" (and optionally a new Status) for a fix.\n\nArgs:\n    customer_id: The ad account this fix belongs to\n    fix_id: The fix id this conclusion is for\n    conclusion: The conclusion text\n    status: Optional new status value",
+    "inputSchema": {
+      "properties": {
+        "conclusion": {
+          "type": "string"
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "fix_id": {
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "customer_id",
+        "fix_id",
+        "conclusion"
+      ],
+      "type": "object"
+    },
+    "name": "fixes_log_update_fix_conclusion",
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Write an observed-results note into a fix's time-boxed review\ncolumn. Pull the relevant metrics yourself first (via the existing\nsearch/GAQL tools) and compose the note - this tool only writes it.\n\nArgs:\n    customer_id: The ad account this fix belongs to\n    fix_id: The fix id this note is for\n    period: Which column to write - \"week\", \"2weeks\", or \"month\"\n    note: The observed-results text to write",
+    "inputSchema": {
+      "properties": {
+        "customer_id": {
+          "type": "string"
+        },
+        "fix_id": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "period": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "fix_id",
+        "period",
+        "note"
+      ],
+      "type": "object"
+    },
+    "name": "fixes_log_update_fix_review",
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Search for geo target constants using a query.\n\nArgs:\n    query: Search query for geo targets (e.g., \"California\", \"London\")\n    locale: Language locale for results (e.g., \"en\", \"es\", \"fr\")\n    limit: Maximum number of results to return\n\nReturns:\n    List of geo target constants matching the query",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "locale": {
+          "default": "en",
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "geo_target_search_geo_targets",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Get metadata for a specific Google Ads field.\n\nArgs:\n    field_name: The field name (e.g., \"campaign.name\", \"metrics.clicks\")\n\nReturns:\n    Field metadata including:\n    - category: RESOURCE, ATTRIBUTE, SEGMENT, or METRIC\n    - data_type: STRING, INT64, DOUBLE, BOOLEAN, etc.\n    - selectable: Whether the field can be selected in queries\n    - filterable: Whether the field can be used in WHERE clauses\n    - sortable: Whether the field can be used in ORDER BY",
+    "inputSchema": {
+      "properties": {
+        "field_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "field_name"
+      ],
+      "type": "object"
+    },
+    "name": "google_ads_field_get_field_metadata",
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Get all available fields for a specific resource.\n\nArgs:\n    resource_name: The resource name (e.g., \"campaign\", \"ad_group\", \"keyword_view\")\n    include_metrics: Include available metrics for this resource\n    include_segments: Include available segments for this resource\n\nReturns:\n    Dictionary with categorized fields:\n    - attributes: Resource-specific fields\n    - metrics: Available metrics (if requested)\n    - segments: Available segments (if requested)",
+    "inputSchema": {
+      "properties": {
+        "include_metrics": {
+          "default": true,
+          "type": "boolean"
+        },
+        "include_segments": {
+          "default": true,
+          "type": "boolean"
+        },
+        "resource_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_name"
+      ],
+      "type": "object"
+    },
+    "name": "google_ads_field_get_resource_fields",
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Search for Google Ads fields based on criteria.\n\nArgs:\n    query: Optional search query using field query syntax\n        Examples:\n        - \"name LIKE '%campaign%'\"\n        - \"category = 'METRIC' AND selectable = true\"\n    category_filter: Filter by category - RESOURCE, ATTRIBUTE, SEGMENT, or METRIC\n    selectable_only: Only return fields that can be selected in queries\n    limit: Maximum number of results\n\nReturns:\n    List of field metadata matching the criteria",
+    "inputSchema": {
+      "properties": {
+        "category_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "selectable_only": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "name": "google_ads_field_search_fields",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Validate if fields can be selected together in a query.\n\nArgs:\n    resource_name: The main resource for the query (e.g., \"campaign\")\n    field_names: List of field names to validate\n\nReturns:\n    Validation result with:\n    - all_compatible: Whether all fields can be selected together\n    - fields: Individual field validation results\n    - issues: List of compatibility issues found",
+    "inputSchema": {
+      "properties": {
+        "field_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "resource_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_name",
+        "field_names"
+      ],
+      "type": "object"
+    },
+    "name": "google_ads_field_validate_query_fields",
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Get optimization recommendations for the account.\n\nArgs:\n    customer_id: The customer ID\n    types: Optional list of recommendation types to filter:\n        - CAMPAIGN_BUDGET\n        - KEYWORD\n        - TEXT_AD\n        - TARGET_CPA_OPT_IN\n        - RESPONSIVE_SEARCH_AD\n        - SITELINK_EXTENSION\n        - CALL_EXTENSION\n        - KEYWORD_MATCH_TYPE\n        - RAISE_TARGET_CPA_PERFORMANCE_BID_TOO_LOW (target CPA too low\n          for Search; details include recommended_target_multiplier)\n        - LOWER_TARGET_ROAS_PERFORMANCE_BID_TOO_LOW (target ROAS too\n          high for Search; details include recommended_target_multiplier)\n        - etc.\n    campaign_ids: Optional list of campaign IDs to filter recommendations\n    dismissed: Whether to include dismissed recommendations\n    limit: Maximum number of results\n\nReturns:\n    List of recommendations with type, impact, and specific details",
+    "inputSchema": {
+      "properties": {
+        "campaign_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "dismissed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "types": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "recommendation_get_recommendations",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Execute a custom GAQL (Google Ads Query Language) query.\n\nArgs:\n    customer_id: The customer ID\n    query: The GAQL query to execute\n\nReturns:\n    List of query results as dictionaries\n\nExample queries:\n    - \"SELECT campaign.id, campaign.name FROM campaign WHERE campaign.status = 'ENABLED'\"\n    - \"SELECT metrics.clicks, metrics.impressions FROM campaign WHERE segments.date DURING LAST_7_DAYS\"",
+    "inputSchema": {
+      "properties": {
+        "customer_id": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "search_execute_query",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Search for ad groups.\n\nArgs:\n    customer_id: The customer ID\n    campaign_id: Optional campaign ID to filter by\n    include_removed: Whether to include removed ad groups\n    limit: Maximum number of results to return\n\nReturns:\n    List of ad group details with id, name, status, bids, etc.",
+    "inputSchema": {
+      "properties": {
+        "campaign_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "include_removed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 1000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "search_search_ad_groups",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Search for campaigns in a customer account.\n\nArgs:\n    customer_id: The customer ID\n    include_removed: Whether to include removed campaigns\n    limit: Maximum number of results to return\n\nReturns:\n    List of campaign details with id, name, status, budget, etc.",
+    "inputSchema": {
+      "properties": {
+        "customer_id": {
+          "type": "string"
+        },
+        "include_removed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 1000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "search_search_campaigns",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Search for keywords.\n\nArgs:\n    customer_id: The customer ID\n    ad_group_id: Optional ad group ID to filter by\n    include_negative: Whether to include negative keywords\n    limit: Maximum number of results to return\n\nReturns:\n    List of keyword details with text, match type, bid, etc.",
+    "inputSchema": {
+      "properties": {
+        "ad_group_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "include_negative": {
+          "default": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 1000,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "search_search_keywords",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List criteria in a shared set.\n\nArgs:\n    customer_id: The customer ID\n    shared_set_id: The shared set ID\n    criterion_type: Optional filter by type - KEYWORD or PLACEMENT\n\nReturns:\n    List of shared criteria with details",
+    "inputSchema": {
+      "properties": {
+        "criterion_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "customer_id": {
+          "type": "string"
+        },
+        "shared_set_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "customer_id",
+        "shared_set_id"
+      ],
+      "type": "object"
+    },
+    "name": "shared_criterion_list_shared_criteria",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "_meta": {
+      "_fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List shared sets in the account.\n\nArgs:\n    customer_id: The customer ID\n    type_filter: Optional filter by type - NEGATIVE_KEYWORDS or NEGATIVE_PLACEMENTS\n    status_filter: Optional filter by status - ENABLED or REMOVED\n\nReturns:\n    List of shared sets with details including member_count and reference_count",
+    "inputSchema": {
+      "properties": {
+        "customer_id": {
+          "type": "string"
+        },
+        "status_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "customer_id"
+      ],
+      "type": "object"
+    },
+    "name": "shared_set_list_shared_sets",
+    "outputSchema": {
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "returned",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  }
+]

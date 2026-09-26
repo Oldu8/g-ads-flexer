@@ -268,7 +268,8 @@ async def test_execute_query(
     call_args = mock_google_ads_service.search.call_args  # type: ignore
     request = call_args[1]["request"]
     assert request.customer_id == customer_id
-    assert request.query.strip() == query.strip()
+    # No LIMIT in the query -> the row cap + 1 is appended (see ensure_gaql_limit).
+    assert request.query == f"{query.strip()} LIMIT 501"
 
     # Verify logging
     mock_ctx.log.assert_called_once_with(  # type: ignore

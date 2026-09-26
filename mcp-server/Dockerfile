@@ -11,7 +11,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY main.py remote_main.py ./
+COPY main.py remote_main.py tool_profiles.yaml ./
 COPY src ./src
 
 RUN uv sync --frozen --no-dev

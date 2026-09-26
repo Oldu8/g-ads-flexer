@@ -75,7 +75,6 @@ class TestGoogleAdsService:
             ctx=mock_context,
             customer_id="123-456-7890",
             query="SELECT campaign.id, campaign.name FROM campaign",
-            page_size=100,
         )
 
         # Verify the request
@@ -93,6 +92,44 @@ class TestGoogleAdsService:
         assert result["total_results_count"] == 1
         assert result["field_mask"] == ["campaign.id", "campaign.name"]
         assert result["summary_row"] is None
+        assert result["truncated"] is False
+
+    async def test_search_has_no_page_size(self, google_ads_service: Any) -> None:
+        """v25 rejects a client page size, so the parameter must not exist."""
+        import inspect
+
+        assert (
+            "page_size" not in inspect.signature(google_ads_service.search).parameters
+        )
+
+    async def test_search_caps_page_and_withholds_token(
+        self,
+        google_ads_service: Any,
+        mock_context: Any,
+        mock_client: Any,
+        monkeypatch: Any,
+    ):
+        """A truncated page must not hand out a token that skips its remainder."""
+        monkeypatch.setenv("GOOGLE_ADS_MCP_ROW_CAP", "2")
+        google_ads_service._client = mock_client
+        mock_response = SearchGoogleAdsResponse()
+        for i in range(5):
+            row = GoogleAdsRow()
+            row.campaign.id = i  # type: ignore
+            mock_response.results.append(row)  # type: ignore
+        mock_response.next_page_token = "page2"
+        mock_client.search.return_value = mock_response  # type: ignore
+
+        result = await google_ads_service.search(
+            ctx=mock_context,
+            customer_id="1234567890",
+            query="SELECT campaign.id FROM campaign",
+        )
+
+        assert result["returned"] == 2
+        assert result["truncated"] is True
+        assert "warning" in result
+        assert result["next_page_token"] is None
 
     async def test_search_with_pagination(
         self, google_ads_service: Any, mock_context: Any, mock_client: Any

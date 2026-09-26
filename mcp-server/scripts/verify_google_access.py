@@ -601,6 +601,9 @@ def main() -> None:
             ("GOOGLE_ADS_CLIENT_ID", client_id),
             ("GOOGLE_ADS_CLIENT_SECRET", client_secret),
             ("GOOGLE_ADS_REFRESH_TOKEN", refresh_token),
+            # Required by GoogleAdsClient.load_from_env (main.py); without it
+            # the local server fails at startup.
+            ("GOOGLE_ADS_USE_PROTO_PLUS", "true"),
         ):
             line = f"{key}={value}"
             pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)

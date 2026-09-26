@@ -1,13 +1,17 @@
 import json
 import logging
 import os
+import re
+from itertools import islice
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TypeVar
+from typing import Any, Dict, Iterable, List, Optional, TypeVar
 
 import grpc
 from google.ads.googleads.errors import GoogleAdsException
 from google.ads.googleads.v25.errors.types.errors import GoogleAdsFailure
 from google.protobuf.json_format import MessageToDict
+
+from src.error_hints import ads_error_hint
 
 E = TypeVar("E")
 
@@ -167,7 +171,19 @@ def format_ads_error(ex: GoogleAdsException) -> str:
 
     request_id = getattr(ex, "request_id", None)
     suffix = f" (request_id={request_id})" if request_id else ""
-    return f"Google Ads API error: {summary}{suffix}"
+    hint = ads_error_hint(f"{summary} {_error_codes_text(errors)}")
+    hint_text = f" Hint: {hint}" if hint else ""
+    return f"Google Ads API error: {summary}{suffix}{hint_text}"
+
+
+def _error_codes_text(errors: Any) -> str:
+    """Error-code names (e.g. CUSTOMER_NOT_ENABLED) for hint matching."""
+    if errors is None:
+        return ""
+    try:
+        return " ".join(str(getattr(error, "error_code", "")) for error in errors)
+    except TypeError:
+        return ""
 
 
 def format_partial_failure_error(
@@ -253,3 +269,64 @@ def serialize_proto_message(
                 if not key.startswith("_"):
                     result[key] = str(value) if value is not None else None
         return result
+
+
+# --- Bounded list responses -------------------------------------------------
+
+ROW_CAP_ENV = "GOOGLE_ADS_MCP_ROW_CAP"
+DEFAULT_ROW_CAP = 500
+TRUNCATION_WARNING = (
+    "This list is incomplete: only the first {cap} items are returned. An item "
+    "missing from it is NOT evidence that the item does not exist - never "
+    "create something because it is absent here. Narrow the request (WHERE "
+    "filters, ORDER BY ... LIMIT, a specific campaign or ad group) and ask again."
+)
+
+
+def row_cap() -> int:
+    """Maximum items a list-returning tool may return (env-configurable)."""
+    raw = os.environ.get(ROW_CAP_ENV, "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_ROW_CAP
+    return value if value > 0 else DEFAULT_ROW_CAP
+
+
+def list_envelope(rows: Iterable[E], cap: Optional[int] = None) -> Dict[str, Any]:
+    """Return at most `cap` rows as `{items, returned, truncated[, warning]}`.
+
+    Reads `cap + 1` rows to detect truncation and never consumes the rest of
+    the iterable, so a lazy pager stops fetching pages there.
+    """
+    limit = cap if cap is not None else row_cap()
+    items = list(islice(rows, limit + 1))
+    truncated = len(items) > limit
+    items = items[:limit]
+    envelope: Dict[str, Any] = {
+        "items": items,
+        "returned": len(items),
+        "truncated": truncated,
+    }
+    if truncated:
+        envelope["warning"] = TRUNCATION_WARNING.format(cap=limit)
+    return envelope
+
+
+_LIMIT_RE = re.compile(r"\bLIMIT\s+\d+", re.IGNORECASE)
+_PARAMETERS_RE = re.compile(r"\bPARAMETERS\b", re.IGNORECASE)
+
+
+def ensure_gaql_limit(query: str, limit: int) -> str:
+    """Add `LIMIT <limit>` to a GAQL query that has none; keep an existing one.
+
+    GAQL puts LIMIT after ORDER BY and before an optional PARAMETERS clause.
+    """
+    stripped = query.strip().rstrip(";").strip()
+    if _LIMIT_RE.search(stripped):
+        return stripped
+    params = _PARAMETERS_RE.search(stripped)
+    if params:
+        head = stripped[: params.start()].rstrip()
+        return f"{head} LIMIT {limit} {stripped[params.start() :]}"
+    return f"{stripped} LIMIT {limit}"

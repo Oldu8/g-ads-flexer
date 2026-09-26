@@ -1,0 +1,108 @@
+# Tool profiles: which tools the agent can see and call.
+#
+# Validated against src/tool_registry.py at startup: an unknown name stops
+# the process. A profile with an empty list exposes nothing. `"*"` exposes
+# every registered tool (local development only).
+#
+# `read_only` is NOT listed here: src/tool_profiles.py computes it from
+# `manager` (its reads plus fixes-log writes, without the pending-change
+# queue), so it can never drift from the registry.
+#
+# Changing a profile is a product decision with a token cost: regenerate the
+# golden snapshots in the same commit (scripts/dump_tools_list.py) and keep
+# `manager` under its budget (tests/test_tool_surface.py).
+#
+# Duplicates resolved in favour of the listed tool (see TRACKER.md,
+# 2026-09-26): search_execute_query over google_ads_search_google_ads(_stream);
+# ad_group_criterion_* over keyword_add_keywords / keyword_update_keyword_bid /
+# keyword_remove_keyword; campaign_shared_set_attach_shared_set_to_campaign
+# over shared_set_attach_shared_set_to_campaigns. ad_create_expanded_text_ad
+# is excluded: Google stopped accepting new expanded text ads in 2022.
+
+profiles:
+  manager:
+    # core: reads
+    - search_execute_query
+    - search_search_campaigns
+    - search_search_ad_groups
+    - search_search_keywords
+    - google_ads_field_search_fields
+    - google_ads_field_get_resource_fields
+    - google_ads_field_get_field_metadata
+    - google_ads_field_validate_query_fields
+    - recommendation_get_recommendations
+    - ad_group_ad_list_ad_group_ads
+    - ad_resource_get_ad
+    - shared_set_list_shared_sets
+    - shared_criterion_list_shared_criteria
+    - campaign_shared_set_list_campaign_shared_sets
+    - customer_negative_criterion_list_negative_criteria
+    - fixes_log_list_fixes
+    - pending_change_list_pending_changes
+    - pending_change_get_pending_change
+    # core: ads writes (queued)
+    - campaign_create_campaign
+    - campaign_update_campaign
+    - budget_create_campaign_budget
+    - budget_update_campaign_budget
+    - ad_group_create_ad_group
+    - ad_group_update_ad_group
+    - ad_group_criterion_add_keywords
+    - ad_group_criterion_update_criterion_bid
+    - ad_group_criterion_remove_ad_group_criterion
+    - campaign_criterion_add_negative_keyword_criteria
+    - campaign_criterion_remove_campaign_criterion
+    - customer_negative_criterion_add_negative_keywords
+    - customer_negative_criterion_remove_negative_criterion
+    - shared_set_create_shared_set
+    - shared_criterion_add_keywords_to_shared_set
+    - shared_criterion_remove_shared_criterion
+    - campaign_shared_set_attach_shared_set_to_campaign
+    - campaign_shared_set_detach_shared_set_from_campaign
+    - ad_create_responsive_search_ad
+    - ad_group_ad_update_ad_group_ad_status
+    - ad_group_ad_remove_ad_group_ad
+    - ad_resource_update_ad_urls
+    - recommendation_apply_recommendation
+    - recommendation_dismiss_recommendation
+    # core: queue + memory
+    - pending_change_apply_pending_change
+    - pending_change_reject_pending_change
+    - fixes_log_log_fix
+    - fixes_log_update_fix_review
+    - fixes_log_update_fix_conclusion
+    # assets
+    - asset_search_assets
+    - asset_create_sitelink_asset
+    - asset_create_callout_asset
+    - asset_create_structured_snippet_asset
+    - asset_create_call_asset
+    - campaign_asset_list_campaign_assets
+    - campaign_asset_link_asset_to_campaign
+    - campaign_asset_remove_asset_from_campaign
+    - ad_group_asset_list_ad_group_assets
+    - ad_group_asset_link_asset_to_ad_group
+    - ad_group_asset_remove_asset_from_ad_group
+    # targeting + bid modifiers
+    - geo_target_search_geo_targets
+    - campaign_criterion_add_location_criteria
+    - campaign_criterion_add_language_criteria
+    - campaign_criterion_add_device_criteria
+    - campaign_bid_modifier_list_campaign_bid_modifiers
+    - campaign_bid_modifier_update_bid_modifier
+    - campaign_bid_modifier_remove_bid_modifier
+    - ag_bid_mod_list_ad_group_bid_modifiers
+    - ag_bid_mod_create_ad_group_device_bid_modifier
+    - ag_bid_mod_update_ad_group_bid_modifier
+    # audiences
+    - audience_list_audiences
+    - custom_audience_list_custom_audiences
+    - custom_audience_create_custom_audience
+    - user_list_create_rule_based_user_list
+    - user_list_update_user_list
+    - user_list_remove_user_list
+    - ad_group_criterion_add_audience_criteria
+    - audience_insights_generate_audience_composition_insights
+    - audience_insights_generate_suggested_targeting_insights
+
+  all: "*"

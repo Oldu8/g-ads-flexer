@@ -1,23 +1,18 @@
 """Read-only remote entrypoint for the Google Ads MCP server.
 
-This is deliberately a *separate* entrypoint from ``main.py`` (which is
-stdio-only, local, and mounts the full read+write tool surface). This module
-exists so the server can be exposed over the network (e.g. deployed on
-Railway) without any risk of a remote caller creating, updating, applying, or
-deleting anything in a live Google Ads account:
+A separate entrypoint from ``main.py`` (local stdio) so the server can be
+exposed over the network (deployed on Railway) without any tool that can
+change a Google Ads account: it serves the computed ``read_only`` profile
+(``src/tool_profiles.py``), i.e. the ``manager`` profile's reads plus the
+fixes log, derived from ``src/tool_registry.py`` rather than from a
+hand-maintained list of servers. The HTTP endpoint requires a bearer token
+(``MCP_BEARER_TOKEN``); the process refuses to start without one.
 
-- Only tool groups that are 100% query/reporting are mounted (verified by
-  reading their `register_*_tools` source — no create/update/apply/mutate
-  functions in any of them).
-- The HTTP endpoint requires a bearer token (``MCP_BEARER_TOKEN``); the
-  process refuses to start without one rather than falling back to an open
-  endpoint.
+Replaced by the multi-tenant ``hosted_main.py`` in Phase C
+(``openspec/changes/hosted-multitenant-writes``).
 
 Run locally:
     MCP_BEARER_TOKEN=some-secret uv run remote_main.py
-
-On Railway, set ``MCP_BEARER_TOKEN`` and the ``GOOGLE_ADS_*`` credentials as
-service variables; ``$PORT`` is provided automatically.
 """
 
 import os
@@ -26,14 +21,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
-from fastmcp import Context, FastMCP
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 
-from src.sdk_client import GoogleAdsSdkClient, get_sdk_client, set_sdk_client
-from src.servers.audience_insights_server import audience_insights_server
-from src.servers.google_ads_field_server import google_ads_field_server
-from src.servers.invoice_server import invoice_server
-from src.servers.search_server import search_server
+from src.sdk_client import GoogleAdsSdkClient, set_sdk_client
+from src.server_factory import create_server
+from src.tool_profiles import READ_ONLY_PROFILE
 from src.utils import get_logger, load_dotenv
 
 logger = get_logger(__name__)
@@ -76,45 +68,19 @@ def _build_auth() -> StaticTokenVerifier:
     return StaticTokenVerifier(tokens={token: {"client_id": "owner", "scopes": []}})
 
 
-mcp = FastMCP(
+mcp = create_server(
+    READ_ONLY_PROFILE,
     name="google-ads-mcp-readonly",
-    instructions="""Read-only Google Ads MCP server for reporting/analysis.
+    instructions="""Read-only Google Ads MCP server for reporting and analysis.
 
-    No tool exposed here can create, update, apply, or delete anything in the
-    underlying Google Ads account — it only runs GAQL queries and reads
-    metadata, so it is safe to call against a live account remotely.
-
-    Tools:
-    - search_* (search_campaigns, search_ad_groups, search_keywords,
-      execute_query): run GAQL queries for cost, conversions, budgets, etc.
-    - google_ads_field_*: discover and validate GAQL field names.
-    - invoice_*: list billing invoices.
-    - audience_insights_*: generate audience insight reports.
-    - check_sdk_client_status: verify the Google Ads SDK client is ready.
+    No tool exposed here can create, update, apply or delete anything in the
+    Google Ads account. Use search_execute_query (GAQL) for reporting and the
+    google_ads_field_* tools to check field names; the fixes log records and
+    reviews changes made elsewhere.
     """,
     lifespan=lifespan,
     auth=_build_auth(),
 )
-
-for _prefix, _server in (
-    ("search", search_server),
-    ("google_ads_field", google_ads_field_server),
-    ("invoice", invoice_server),
-    ("audience_insights", audience_insights_server),
-):
-    mcp.mount(_server, prefix=_prefix)
-
-
-@mcp.tool
-async def check_sdk_client_status(ctx: Context) -> str:  # noqa: ARG001
-    """Check if the Google Ads SDK client is initialized."""
-    try:
-        client = get_sdk_client()
-        if client:
-            return "Google Ads SDK client is initialized and ready"
-    except Exception:
-        pass
-    return "Google Ads SDK client is not initialized"
 
 
 if __name__ == "__main__":
