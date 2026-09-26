@@ -1,5 +1,57 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-09-26 — Phase A done: tool profiles, registry, bounded responses, error hints
+
+OpenSpec change `agent-surface-profiles`, branch `phase-a-agent-surface`.
+
+**Before → after** (real `tools/list`, measured through the MCP protocol):
+the local default went from 153 tools / ~39k tokens (`--groups
+core,reporting,targeting,assets`) to the `manager` profile, 77 tools /
+~20k tokens. `read_only` = 29 tools / ~8k; `all` = 366 / ~93k.
+
+- `src/tool_registry.py`: every tool classified explicitly (86 read, 264
+  ads_write of which 76 destructive, 12 internal_write, 4 local_only).
+  Drives MCP annotations and the computed `read_only` profile. The old name
+  heuristic had put `user_list_*` and `ad_create_responsive_search_ad` among
+  reads, which is why the spec's `read_only` estimate (33) was wrong: 29.
+- `tool_profiles.yaml` + `src/tool_profiles.py`: unknown names stop the
+  process; `read_only` is computed. Duplicates resolved in `manager`:
+  `search_execute_query` over `google_ads_search_google_ads(_stream)`;
+  `ad_group_criterion_*` over `keyword_add_keywords` / `_update_keyword_bid`
+  / `_remove_keyword` (the pending-change apply path already uses
+  `AdGroupCriterionService.add_keywords`);
+  `campaign_shared_set_attach_shared_set_to_campaign` over
+  `shared_set_attach_shared_set_to_campaigns` (8 tests vs 4).
+  `ad_create_expanded_text_ad` excluded (Google stopped accepting new ETAs
+  in 2022).
+- `src/middleware/tool_profile.py`: filters `tools/list` and `tools/call`
+  (hidden tools can't be called by name), attaches annotations, and wraps
+  list results of read tools in `{items, returned, truncated, warning}`
+  (cap 500, `GOOGLE_ADS_MCP_ROW_CAP`), rewriting their output schema to
+  match. `search_execute_query` appends `LIMIT 501` when a query has none.
+- `src/error_hints.py` + `src/middleware/errors.py`: Google Ads errors get
+  a hint (seeded from this file's incidents: page_size, v25 renamed date
+  fields, field-mask depth, CUSTOMER_NOT_ENABLED, ...); `invalid_grant`,
+  quota and deadline failures become readable messages.
+- `src/server_factory.py`: one `create_server(profile)` for `main.py`
+  (`--profile`, default `manager`, replaces `--groups`), `remote_main.py`
+  (now the computed `read_only`, not a hand-picked server list), tests and
+  `scripts/dump_tools_list.py`. Mount prefixes = tool names = public API.
+- `google_ads_search_google_ads`: `page_size` removed (v25 rejects it);
+  the page is capped and its `next_page_token` withheld when truncated.
+- Tests: `tests/test_tool_surface.py` (registry completeness, profiles,
+  hidden-call rejection, annotations, envelope and error mapping through a
+  real MCP client, golden snapshots in `tests/golden/`, size budgets
+  100k/40k chars) and `tests/test_response_bounds.py`. 827 passed.
+- **Found on the way:** `verify_google_access.py --write-env` omitted
+  `GOOGLE_ADS_USE_PROTO_PLUS=true`, so the restored `.env` could not start
+  `main.py` (SDK config error). Fixed in the script; the local `.env` was
+  patched.
+- **Live-checked on boo.ua over stdio:** 77 tools listed; a GAQL campaign
+  query returned an enveloped 310-row result; Google's real
+  "Unrecognized field 'campaign.start_date'" error came back with the v25
+  hint (request_id `7ntoQ86tMcZdVOlBor0VFA`).
+
 ## ✅ 2026-09-25 (2) — Live-verified: Google sign-in alone gives API access; SDK 33.0.0; v25.2 bid recommendations
 
 **Access premise verified** for `oldu.boo@gmail.com` with

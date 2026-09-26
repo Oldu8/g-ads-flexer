@@ -13,6 +13,17 @@ written after opening `asset_group_signal_service.py` and confirming what
 it does, not by assuming from the service name. Keep it that way - a stale
 "assumed" answer here is worse than no answer.
 
+## What the agent actually sees
+
+Everything below is implemented in the library, but an agent only sees
+the tools of its **profile** (`tool_profiles.yaml`): `manager` by default
+(77 tools: reporting, campaigns, budgets, ad groups, keywords and
+negatives, RSAs, recommendations, asset extensions, targeting and bid
+modifiers, audiences, the review flow and the fixes log), `read_only` for
+reporting only, `all` for development. A ✅ capability outside `manager`
+(e.g. experiments, conversion uploads, labels, Performance Max asset
+groups) needs `--profile all` or a profile change first.
+
 ## Legend
 
 - ✅ **Ready now** - an MCP tool does this today

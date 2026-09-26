@@ -155,15 +155,15 @@ Spec: `openspec/changes/hosted-multitenant-writes/`.
 
 ## Tool surface
 
-366 tools exist (about 86k tokens if all are listed). The agent sees a
+366 tools exist (about 93k tokens if all are listed). The agent sees a
 **profile**:
 
-- `manager`: 77 tools (~18k tokens): reporting and GAQL, campaigns,
+- `manager`: 77 tools (~20k tokens): reporting and GAQL, campaigns,
   budgets, ad groups, keywords and negatives, RSAs, recommendations,
   asset extensions, targeting and bid modifiers, audiences, the queue and
   the fixes log.
 - `read_only`: computed from `manager`: its reads plus the fixes log
-  (33 tools, ~8k tokens).
+  (29 tools, ~8k tokens).
 - `all`: everything, for local development.
 
 Profiles are YAML validated against a tool registry that classifies

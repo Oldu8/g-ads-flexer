@@ -24,8 +24,9 @@ writes execute (the write queue arrives in `hosted-multitenant-writes`).
 - **Tool registry**: explicit per-tool classification (`read` /
   `ads_write` / `internal_write` / `local_only`, plus `destructive`).
   Annotations (`readOnlyHint`, `destructiveHint`) derive from it.
-- **Profiles**: `tool_profiles.yaml` with `manager` (77 tools, ~18k tokens,
-  measured), `read_only` (computed from `manager`: 33 tools, ~8k) and
+- **Profiles**: `tool_profiles.yaml` with `manager` (77 tools, ~20k tokens
+  with annotations), `read_only` (computed from `manager`: 29 tools, ~8k;
+  the earlier "33" came from a name heuristic the registry corrected) and
   `all`. Middleware filters both `tools/list` and `tools/call`.
   `main.py --profile` replaces `--groups`; `remote_main.py` switches to
   the `read_only` profile.

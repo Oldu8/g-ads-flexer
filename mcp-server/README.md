@@ -79,39 +79,27 @@ one.
 
 ## Run
 
-Run the default core tool group:
+The server always mounts every service (366 tools) and exposes one **tool
+profile** from [`tool_profiles.yaml`](./tool_profiles.yaml):
 
 ```bash
-uv run main.py
+uv run main.py                       # `manager`: 77 tools, ~20k tokens (default)
+uv run main.py --profile read_only   # 29 tools, ~8k tokens: reads + fixes log
+uv run main.py --profile all         # all 366 tools, ~93k tokens (development)
 ```
 
-Run every registered service group:
+| Profile | What the agent gets |
+|---------|---------------------|
+| `manager` | GAQL reporting and field metadata, campaigns, budgets, ad groups, keywords and negatives (shared sets included), responsive search ads, recommendations, asset extensions (sitelink, callout, snippet, call), location/language/device targeting and bid modifiers, audiences and remarketing lists, the pending-change review flow and the fixes log |
+| `read_only` | `manager`'s reads plus the fixes log, computed from the tool registry; nothing that can change an account |
+| `all` | every tool the library wraps |
 
-```bash
-uv run main.py --groups all
-```
-
-Run a focused subset:
-
-```bash
-uv run main.py --groups core,assets,targeting,conversion
-```
-
-Available groups:
-
-| Group | Includes |
-|-------|----------|
-| `core` | Customers, campaigns, budgets, ad groups, keywords, ads, conversions, GAQL, pending-change review/approve, fixes-log Google Sheet sync |
-| `assets` | Assets, asset groups, asset sets, campaign/ad group/customer assets |
-| `targeting` | Criteria, geo targets, audiences, custom interests, user lists |
-| `bidding` | Strategies, bid modifiers, data exclusions, seasonality adjustments |
-| `planning` | Keyword plans, reach planning, brand suggestions |
-| `reporting` | Search, fields, recommendations, invoices, audience insights |
-| `conversion` | Uploads, adjustments, value rules, goals, user data, remarketing |
-| `organization` | Labels, shared sets, shared criteria |
-| `customizers` | Customizer attributes, campaign/ad group/customer customizers, ad parameters |
-| `account` | Access, manager links, billing, payments, identity, product/data links |
-| `other` | Smart campaigns, batch jobs, user data |
+Hidden tools cannot be called by name either. List results are capped at
+500 items (`GOOGLE_ADS_MCP_ROW_CAP`) and come back as
+`{items, returned, truncated, warning}`; GAQL queries without `LIMIT` get
+one. Every tool is classified in [`src/tool_registry.py`](./src/tool_registry.py),
+which also drives the MCP `readOnlyHint` / `destructiveHint` annotations.
+`scripts/dump_tools_list.py --profile <name>` prints what a client sees.
 
 ## MCP Client
 
@@ -122,19 +110,18 @@ Example stdio configuration:
   "mcpServers": {
     "google-ads": {
       "command": "uv",
-      "args": ["run", "main.py", "--groups", "all"],
+      "args": ["run", "main.py", "--profile", "manager"],
       "cwd": "/path/to/google-ads-mcp",
       "env": {
         "GOOGLE_ADS_CLIENT_ID": "...",
         "GOOGLE_ADS_CLIENT_SECRET": "...",
-        "GOOGLE_ADS_REFRESH_TOKEN": "..."
+        "GOOGLE_ADS_REFRESH_TOKEN": "...",
+        "GOOGLE_ADS_USE_PROTO_PLUS": "true"
       }
     }
   }
 }
 ```
-
-Use narrower groups for production agents when you want to reduce tool count and keep routing focused.
 
 ## Development
 

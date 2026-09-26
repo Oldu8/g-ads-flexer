@@ -45,19 +45,25 @@ control headers exactly.
    `uv run --extra dev pyright`, `uv run --extra dev pytest`. (Without
    `--extra dev` these tools are not installed.)
 3. New services and tools: fully typed with v25 generated types, with
-   tests. Register every new tool in the tool registry once it exists
-   (Phase A); the surface test fails otherwise.
-4. Never write scratch/output files (audit dumps, keyword lists, reports,
+   tests. Every new tool needs an entry in `src/tool_registry.py` (its kind
+   and whether it is destructive); `tests/test_tool_surface.py` fails
+   otherwise. Adding it to a profile in `tool_profiles.yaml` is a separate,
+   deliberate decision: regenerate the golden snapshots with
+   `scripts/dump_tools_list.py` in the same commit.
+4. Never change a mount prefix in `src/server_factory.py`: prefixes are
+   tool names, i.e. public API.
+5. Never write scratch/output files (audit dumps, keyword lists, reports,
    id lists) into the project root. Use `./tmp/` (gitignored), named
    `YYYY-MM-DD_<account-or-campaign>_<what-it-is>.<ext>`, e.g.
    `2026-09-04_boo-ua_keyword-audit-90d.txt`. Never `git add` anything
    from it.
-5. Record what you did and why as a dated entry at the top of
+6. Record what you did and why as a dated entry at the top of
    `TRACKER.md`, so the next agent can pick it up.
 
 ## Current task
 
 Implement the roadmap: `../docs/ROADMAP.md` gives the order;
 each phase is an OpenSpec change under `../openspec/changes/` with its own
-`tasks.md`. On this side: Phase A (`agent-surface-profiles`), then Phase C
-(`hosted-multitenant-writes`) once the cabinet and database exist.
+`tasks.md`. On this side: Phase A (`agent-surface-profiles`) is done
+(2026-09-26); next is Phase C (`hosted-multitenant-writes`) once the cabinet
+and database exist.
