@@ -16,9 +16,13 @@ first. One session and one branch per track.
   `/privacy`, `/terms`; `(auth)` → `/login`; `(cabinet)` → `/app`; `/admin`
   (operator-only; 404 until track B5, then Google sign-in + `ADMIN_EMAILS`);
   `/api/health` (Railway health check).
-- **Design:** minimal, white + mint, short copy. Use the token classes from
-  `src/app/globals.css` (`text-ink`, `text-ink-muted`, `border-line`,
-  `bg-surface`, `bg-mint-50/200/400`, `text-mint-700`), never raw hex values.
+- **Design:** minimal, white + jade + mint accents (palette "A · Jade"),
+  short copy. Use the semantic tokens from `src/app/globals.css` (`ink`,
+  `ink-muted`, `line`, `line-strong`, `surface`, `primary`,
+  `primary-hover`, `accent`, `accent-soft`, `tint`) and the shared classes
+  in `src/components/ui.ts` (`buttonPrimary`, `buttonSecondary`, `badge`,
+  `textLink`); never raw hex values. Hover states get darker, never lighter;
+  the bright mint accent is never a background behind text.
 - **Indexing** is off (`robots.txt` disallow + `noindex`) until
   `ALLOW_INDEXING=true`: the current domain `ads.vtrata.com` is temporary.
 - **Database:** from track B1 this app owns the Postgres schema and every

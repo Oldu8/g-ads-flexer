@@ -1,19 +1,26 @@
 @import "tailwindcss";
 
 /*
- * Design tokens (docs/ROADMAP.md, web track B3 refines them):
- * light, minimal, white + mint. Use these names in components instead of
- * raw hex values so the palette can change in one place.
+ * Design tokens. Palette "A · Jade" (chosen 2026-09-27, ROADMAP track B3):
+ * white + jade actions + bright mint accents. Components use these semantic
+ * names, never raw hex values, so a rebrand changes only this block.
+ * Contrast (WCAG): white on primary 5.3:1; ink on white 17.8:1.
  */
 @theme {
-  --color-ink: #0f1a17; /* primary text, near-black with a green tint */
+  /* Neutrals */
+  --color-ink: #0f1a17; /* primary text */
   --color-ink-muted: #5b6b66; /* secondary text */
-  --color-line: #e3ece8; /* 1px borders */
-  --color-surface: #f6fbf9; /* light mint-tinted sections */
-  --color-mint-50: #e6f7f1; /* tint, CTA bands */
-  --color-mint-200: #9ee6cc; /* soft accent */
-  --color-mint-400: #3ccb9f; /* primary accent, primary buttons (dark text) */
-  --color-mint-700: #0e8a6a; /* links and icons on white (AA contrast) */
+  --color-line: #e3ece8; /* dividers, card borders */
+  --color-line-strong: #d6e2dd; /* outlined buttons, inputs */
+  --color-surface: #f6fbf9; /* light sections, hover on white */
+
+  /* Brand */
+  --color-primary: #0b7a5c; /* buttons and links, white text on it */
+  --color-primary-hover: #096b51; /* hover gets darker, never lighter */
+  --color-primary-active: #07563f;
+  --color-accent: #3ccb9f; /* logo dot, highlights, focus ring; never behind text */
+  --color-accent-soft: #9ee6cc; /* highlight underlines */
+  --color-tint: #e7f7f0; /* badges, soft bands (text on it: primary) */
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);

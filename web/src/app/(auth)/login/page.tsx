@@ -21,7 +21,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
           account (MCC). Google will ask to allow access to Google Ads.
         </p>
         {error ? (
-          <p className="mt-4 rounded-lg bg-mint-50 px-3 py-2 text-sm text-ink">
+          <p className="mt-4 rounded-lg bg-tint px-3 py-2 text-sm text-ink">
             Sign-in did not complete. Please try again.
           </p>
         ) : null}

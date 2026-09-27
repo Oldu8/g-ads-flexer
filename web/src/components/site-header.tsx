@@ -16,7 +16,7 @@ export function SiteHeader() {
           </Link>
           <Link
             href="/login"
-            className="rounded-lg border border-line px-3 py-1.5 text-ink hover:bg-surface"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-ink transition-colors hover:bg-surface"
           >
             Sign in
           </Link>
