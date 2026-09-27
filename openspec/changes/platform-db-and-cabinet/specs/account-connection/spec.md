@@ -5,7 +5,7 @@ Turn "sign in with Google" into ad accounts that an MCP client can use, with the
 ## ADDED Requirements
 
 ### Requirement: One Google grant signs in and grants Ads access
-Sign-in SHALL use Auth.js v5 with the Google provider, requesting scopes `openid email profile https://www.googleapis.com/auth/adwords`, `access_type=offline` and `prompt=consent`. The adapter SHALL be wrapped so that `linkAccount` encrypts the refresh token into `refresh_token_enc` and nulls the plaintext columns, and so that a later sign-in which returns a new refresh token overwrites `refresh_token_enc` and clears `revoked_at`.
+Sign-in SHALL use Better Auth with the Google provider, requesting scopes `openid email profile https://www.googleapis.com/auth/adwords`, `access_type=offline` and `prompt=select_account consent`. Better Auth's account database hooks SHALL encrypt the refresh token into `refresh_token_enc` and null the access and id tokens before any write, so that a later sign-in which returns a new refresh token overwrites `refresh_token_enc`; a successful sign-in SHALL clear `revoked_at`.
 
 #### Scenario: First sign-in
 - **WHEN** a new person signs in and consents

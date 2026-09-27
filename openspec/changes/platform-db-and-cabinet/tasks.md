@@ -1,15 +1,16 @@
 ## 1. Project and database
 
-- [ ] 1.1 Next.js (App Router, TypeScript) in `web/`; Drizzle + `drizzle-kit`; env schema validated at startup (`DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `TOKEN_ENCRYPTION_KEY`, `MCP_PUBLIC_URL`, `SHEETS_SERVICE_ACCOUNT_EMAIL`).
-- [ ] 1.2 Drizzle schema for every table in `platform-schema` (including `pending_changes`, `api_usage` and the `api_usage_daily_totals` view that only Python uses); generate SQL migrations; the migrations table lives in each schema, not in a shared one.
-- [ ] 1.3 `web/db/roles.sql` (run once by the operator): schemas `app`/`app_dev`, roles `web_prod`/`mcp_prod`/`web_dev`/`mcp_dev`, `search_path` per role, grants exactly as in the spec. `web/db/README.md`: how to apply migrations to each schema.
-- [ ] 1.4 `web/lib/crypto.ts`: AES-256-GCM `encryptToken`/`decryptToken` in the `v1.` format; commit `web/db/test-vectors/token-encryption.json`; tests that reproduce and round-trip it.
-- [ ] 1.5 Grant tests (run against `app_dev` when `DATABASE_URL` is set, skipped otherwise): `mcp_dev` cannot read `sessions` or anything in `app`.
+- [x] 1.1 Next.js (App Router, TypeScript) in `web/` (track B0); Drizzle + `drizzle-kit`; required env read through `requiredEnv` (`DATABASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`; `MCP_PUBLIC_URL` and `SHEETS_SERVICE_ACCOUNT_EMAIL` arrive with B2).
+- [x] 1.2 Drizzle schema for every table in `platform-schema` (including `pending_changes`, `api_usage` and the `api_usage_daily_totals` view that only Python uses); generate SQL migrations; the migrations table lives in each schema, not in a shared one.
+- [x] 1.3 `web/db/setup-roles.mjs` (`npm run db:setup-roles`): schemas `app`/`app_dev`, roles `web_prod`/`web_dev` (owners) and `mcp_prod`/`mcp_dev` (NOLOGIN until Phase C), `search_path` per role; passwords go to `.env.local` / Railway, never to the console. Migrations: `npm run db:generate` (strips `"public".`), `npm run db:migrate`.
+- [x] 1.4 `web/src/lib/token-crypto.ts`: AES-256-GCM `encryptToken`/`decryptToken` in the `v1.` format; commit `web/db/test-vectors/token-encryption.json`; tests that reproduce and round-trip it.
+- [ ] 1.5 Grant tests: moved to Phase C together with the MCP role grants.
 
 ## 2. Sign-in
 
-- [ ] 2.1 Auth.js v5 with the Drizzle adapter on the custom tables; Google provider with the `adwords` scope, offline access, `prompt=consent`.
-- [ ] 2.2 Adapter wrapper: encrypt on `linkAccount`, overwrite `refresh_token_enc` and clear `revoked_at` on a sign-in that returns a new refresh token, never persist plaintext tokens. Test with a fake adapter.
+- [x] 2.1 Better Auth with the Drizzle adapter on the custom tables; Google provider with the `adwords` scope, offline access, `prompt=select_account consent`.
+- [x] 2.2 Account database hooks: encrypt the refresh token, never persist access/id tokens, clear `revoked_at` on sign-in. Unit-tested (`protectTokens`).
+- [ ] 2.3 Live check on `app_dev` and prod: run `db:setup-roles` and `db:migrate`, sign in with Google, confirm the `google_connections` row (ciphertext only, `adwords` in `scope`).
 
 ## 3. Discovery and accounts
 
