@@ -1,0 +1,8 @@
+{
+  "description": "AES-256-GCM refresh-token format v1; the TypeScript (web) and Python (mcp-server) implementations must both reproduce `expected` and decrypt it back to `plaintext`. Test-only key.",
+  "key_base64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "nonce_hex": "000102030405060708090a0b",
+  "aad": "adsmigo:google_connections.refresh_token_enc:v1",
+  "plaintext": "1//0test-refresh-token-not-a-real-one",
+  "expected": "v1.AAECAwQFBgcICQoLdi35K7GAsW-gM_Ltw4wLBa6i6F-VFXISVxPI5DAbZdNtPcGSypVRmyUvW5gYcpPRykETvrM"
+}
