@@ -8,6 +8,13 @@
       "when": 1790498160856,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790499948894,
+      "tag": "0001_illegal_wind_dancer",
+      "breakpoints": true
     }
   ]
 }

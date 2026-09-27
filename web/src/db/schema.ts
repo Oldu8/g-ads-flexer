@@ -28,9 +28,11 @@ const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull(
 const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
 
 // --- Better Auth core (user, session, account, verification) -----------------
+// With `generateId: "uuid"` on Postgres, Better Auth leaves ids to the
+// database, so every id column needs a default.
 
 export const users = pgTable("users", {
-  id: uuid("id").primaryKey(),
+  id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
@@ -42,7 +44,7 @@ export const users = pgTable("users", {
 export const sessions = pgTable(
   "sessions",
   {
-    id: uuid("id").primaryKey(),
+    id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -64,7 +66,7 @@ export const sessions = pgTable(
 export const googleConnections = pgTable(
   "google_connections",
   {
-    id: uuid("id").primaryKey(),
+    id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -88,7 +90,7 @@ export const googleConnections = pgTable(
 );
 
 export const verifications = pgTable("verifications", {
-  id: uuid("id").primaryKey(),
+  id: uuid("id").primaryKey().defaultRandom(),
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
