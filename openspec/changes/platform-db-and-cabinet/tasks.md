@@ -10,7 +10,7 @@
 
 - [x] 2.1 Better Auth with the Drizzle adapter on the custom tables; Google provider with the `adwords` scope, offline access, `prompt=select_account consent`.
 - [x] 2.2 Account database hooks: encrypt the refresh token, never persist access/id tokens, clear `revoked_at` on sign-in. Unit-tested (`protectTokens`).
-- [ ] 2.3 Live check on `app_dev` and prod: run `db:setup-roles` and `db:migrate`, sign in with Google, confirm the `google_connections` row (ciphertext only, `adwords` in `scope`).
+- [x] 2.3 Live check on `app_dev` and prod (done 2026-09-28: operator signed in on ads.vtrata.com; row has `v1.` ciphertext, null access/id tokens, `adwords` scope): run `db:setup-roles` and `db:migrate`, sign in with Google, confirm the `google_connections` row (ciphertext only, `adwords` in `scope`).
 
 ## 3. Discovery and accounts
 
