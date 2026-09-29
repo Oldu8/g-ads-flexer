@@ -6,14 +6,17 @@ Two independent apps, different stacks, sharing one Postgres database
 - **`mcp-server/`** — Python. The Google Ads MCP server. Has its own
   `CLAUDE.md` with rules for that side — **read it before touching
   anything under `mcp-server/`**.
-- **`web/`** — Next.js (not started). Cabinet: Google sign-in, account
-  discovery, bearer-token issuance. Owns the database schema and every
+- **`web/`** — Next.js. Cabinet: Google sign-in, account discovery, one
+  MCP URL per ad account, and the OAuth authorization server MCP clients
+  (Claude Desktop) sign in through. Owns the database schema and every
   migration, including the tables the Python side writes to.
 
 Why two stacks: the Google Ads SDK engine has to be Python; the product
 surface (cabinet now, marketing pages later) is Next.js territory and the
-user's own stack. They never call each other: `web/` writes accounts and
-tokens, `mcp-server/` reads them and writes the queue and usage tables.
+user's own stack. They never call each other's APIs: `web/` writes
+accounts and issues OAuth tokens, `mcp-server/` verifies those tokens
+against `web/`'s public JWKS, reads the accounts and writes the queue and
+usage tables.
 
 ## Where things are written down
 
@@ -35,7 +38,8 @@ archive it under `openspec/changes/archive/`.
 - `.mcp.json` — launches the local MCP server via
   `uv run --directory mcp-server python main.py ...`. Needs
   `mcp-server/.env` (not committed); `mcp-server/scripts/verify_google_access.py
-  --write-env .env` recreates it. The launch flags change when the specced
-  phases land (`--profile` in Phase A, `MCP_ACCOUNT_TOKEN` in Phase C).
+  --write-env .env` recreates it. In Phase C the stdio entrypoint is
+  removed (ROADMAP D25) and `.mcp.json` points at an `http` URL
+  `/mcp/<slug>` instead.
 - `openspec/` — spec-driven change workflow (lean schema: proposal,
   specs, tasks).

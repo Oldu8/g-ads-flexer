@@ -17,9 +17,10 @@
 
 ## 4. Auth, tenancy, entrypoints
 
-- [ ] 4.1 `src/auth/db_token_verifier.py` (hash lookup, enabled, not revoked, throttled `last_used_at`). Tests with a fake repository.
-- [ ] 4.2 `src/middleware/tenant.py`: set the tenant contextvar from `get_access_token()` (hosted) or from the process-level tenant (stdio); pick the profile from `tool_profile` for the `agent-surface-profiles` middleware; strip `customer_id` from schemas and inject it on calls; synthetic `account_context` tool.
-- [ ] 4.3 `hosted_main.py`: streamable HTTP at `/mcp`, `DbTokenVerifier`, middleware order: tenant → profile → write queue → error mapping. `main.py`: `MCP_ACCOUNT_TOKEN`, same stack over stdio, exits with a pointer to the cabinet when missing.
+- [ ] 4.0 Decide at the start: per-path auth (`/mcp/{slug}`, one RFC 9728 document and `WWW-Authenticate` per path) as an ASGI wrapper around FastMCP 2.14.7, or upgrade FastMCP (4.x at the time of writing). Record the choice in `TRACKER.md`.
+- [ ] 4.1 `src/auth/account_token_verifier.py`: ES256 JWT against the web JWKS (cached), `iss`, `exp`, `aud` = request URL, slug → `ad_accounts` owned by `sub`, enabled, not revoked, throttled `last_used_at`; per-path protected-resource metadata and 401 challenge. Tests with locally signed tokens and a fake repository (wrong `aud`, foreign `sub`, disabled, revoked, unknown slug, expired).
+- [ ] 4.2 `src/middleware/tenant.py`: set the tenant contextvar from the verified account; pick the profile from `tool_profile` for the `agent-surface-profiles` middleware; strip `customer_id` from schemas and inject it on calls; synthetic `account_context` tool.
+- [ ] 4.3 `hosted_main.py`: streamable HTTP at `/mcp/{slug}`, the account verifier, middleware order: tenant → profile → write queue → error mapping. Env: `MCP_PUBLIC_URL`, `AUTH_ISSUER`, `AUTH_JWKS_URL`.
 - [ ] 4.4 `invalid_grant` handling: set `revoked_at`, evict cached clients, reconnect message.
 
 ## 5. Write queue
@@ -30,8 +31,8 @@
 
 ## 6. Fixes log, cleanup, deploy
 
-- [ ] 6.1 Fixes log: sheet from `ad_accounts.fixes_sheet_id`; when missing, fixes-log tools say "no sheet configured; set it in the cabinet" and applies still succeed. Remove `account_sheets` resolution.
-- [ ] 6.2 Remove `remote_main.py`, `account_registry_*` (service, store, server, example JSON), `account_sheets.example.json`, `GOOGLE_ADS_REFRESH_TOKEN` from `.env.example`. Update `../.mcp.json` (`MCP_ACCOUNT_TOKEN` in `env`), `README.md` (local setup = token from the cabinet), `../docs/PLATFORM_ARCHITECTURE.md` if anything built differs from it.
-- [ ] 6.3 `Dockerfile` → `hosted_main.py`; Railway service with `mcp_prod` credentials, `TOKEN_ENCRYPTION_KEY` (prod), OAuth client id/secret, cap env vars.
+- [ ] 6.1 Fixes log: sheet from `ad_accounts.fixes_sheet_id`, gspread authorized with the connection's refresh token (`drive.file`), header from `../web/db/contracts/fixes-log-header.json` (contract test); when the sheet or scope is missing, fixes-log tools say "no fixes log available; open the account in the cabinet" and applies still succeed. Remove `account_sheets` resolution and the service-account credentials.
+- [ ] 6.2 Remove `main.py`, `remote_main.py`, `account_registry_*` (service, store, server, example JSON), `account_sheets.example.json`, `GOOGLE_ADS_REFRESH_TOKEN` and `GOOGLE_SHEETS_*` from `.env.example`. Update `../.mcp.json` (an `http` entry pointing at the local or hosted `/mcp/<slug>`), `README.md` (local setup = hosted entrypoint on localhost + local `web/`), `../docs/PLATFORM_ARCHITECTURE.md` if anything built differs from it.
+- [ ] 6.3 `Dockerfile` → `hosted_main.py`; Railway service `mcp` on `ads-mcp.vtrata.com` with `mcp_prod` credentials, `TOKEN_ENCRYPTION_KEY` (prod), OAuth client id/secret (must equal `web`'s `GOOGLE_CLIENT_ID`), `MCP_PUBLIC_URL`, `AUTH_ISSUER`, `AUTH_JWKS_URL`, cap env vars.
 - [ ] 6.4 `scripts/usage_report.py`.
-- [ ] 6.5 Verify on `app_dev` with the operator's real account from the cabinet: read query; queued budget change with `validation: full`; apply; fixes-log row; a second tenant token cannot see or apply the first one's change. `uv run ruff format .`, `uv run pyright`, `uv run pytest` green. Dated `TRACKER.md` entry.
+- [ ] 6.5 Verify on prod with Claude Desktop (first live step, D22): add the account's MCP URL as a custom connector, complete OAuth, list tools; then, also on `app_dev` via Claude Code: read query; queued budget change with `validation: full`; apply; fixes-log row; a second tenant token cannot see or apply the first one's change. `uv run ruff format .`, `uv run pyright`, `uv run pytest` green. Dated `TRACKER.md` entry.

@@ -15,10 +15,11 @@ One fact makes the write queue cheap: `GoogleAdsClient.get_service()` accepts gR
 
 - Per-request credentials: upgrade `google-ads` to ≥ 32.0.0 (released 2026-09-09; `developer_token` is no longer a required config key and the header is only sent when set, verified 2026-09-25 by inspecting 32.0.0 and 33.0.0), a tenant contextvar, `build_client(refresh_token, login_customer_id)` with no developer token at all, a service-client cache keyed by `(google_connection_id, login_customer_id, service)`, and all services switched from `self._client` to it.
 - A transport interceptor (the choke point): enforces the pinned `customer_id`, forces `validate_only` during queuing (refusing to send mutates that cannot be validated), and counts operations against caps.
-- `DbTokenVerifier`, `hosted_main.py` (streamable HTTP at `/mcp`), per-request profile from `ad_accounts.tool_profile`, `customer_id` removed from tool schemas and injected, the `account_context` tool.
+- OAuth resource server (revised 2026-09-29, D22–D25): one path per account `/mcp/{mcp_slug}` with its own RFC 9728 metadata pointing at the web authorization server; ES256 JWTs verified against the web JWKS, `aud` = the request URL, owner/enabled/revoked checked in the DB per request. `hosted_main.py`, per-request profile from `ad_accounts.tool_profile`, `customer_id` removed from tool schemas and injected, the `account_context` tool.
 - Unified write queue in Postgres for every `ads_write` tool; `apply`/`reject`; the seven `propose_*` tools and `snapshots/pending_changes.json` are removed.
 - Quota: 1,500 ops/day and 60/min per account, stop at 90% of 15,000 for the project, one operator alert per day, 7-day readout.
-- Local mode: `main.py` authenticates with the same bearer token (`MCP_ACCOUNT_TOKEN` env var) through the same verifier, over stdio; `account_registry.json`, `account_sheets.json` and the Google refresh token in `.env` are removed; `remote_main.py` is deleted.
+- No local-token mode (D25): local development runs `hosted_main.py` on localhost against `app_dev`, with Claude Code doing OAuth against local `web/`. `main.py` (stdio), `remote_main.py`, `account_registry.json`, `account_sheets.json` and the Google refresh token in `.env` are deleted.
+- Fixes log: the sheet the cabinet created (`fixes_sheet_id`), written with the connection's own grant (`drive.file`); header from `web/db/contracts/fixes-log-header.json`; the service account is removed.
 
 Non-goals: RLS policies, a pending-change dashboard, token rotation history, Standard-access work, caching GAQL results.
 
@@ -34,7 +35,7 @@ Non-goals: RLS policies, a pending-change dashboard, token rotation history, Sta
 
 ## Impact
 
-- New: `src/db.py`, `src/crypto.py`, `src/tenant.py`, `src/transport_guard.py`, `src/auth/db_token_verifier.py`, `src/middleware/tenant.py`, `src/middleware/write_queue.py`, `hosted_main.py`.
-- Changed: `src/sdk_client.py`, the `client` property of all 99 services, `src/services/review/pending_change_service.py` (rewritten), `src/services/review/fixes_log_*` (sheet from the DB), `main.py`, `Dockerfile`, `.env.example`, `../.mcp.json`, `README.md`, `pyproject.toml`/`uv.lock` (SDK upgrade).
-- Removed: `remote_main.py`, `src/services/review/pending_change_store.py`, `src/services/review/account_registry_*`, `account_registry.example.json`, `account_sheets.example.json`, the seven `propose_*` tools.
+- New: `src/db.py`, `src/crypto.py`, `src/tenant.py`, `src/transport_guard.py`, `src/auth/account_token_verifier.py` (JWT + DB checks, per-path metadata), `src/middleware/tenant.py`, `src/middleware/write_queue.py`, `hosted_main.py`.
+- Changed: `src/sdk_client.py`, the `client` property of all 99 services, `src/services/review/pending_change_service.py` (rewritten), `src/services/review/fixes_log_*` (sheet from the DB), `Dockerfile`, `.env.example`, `../.mcp.json`, `README.md`, `pyproject.toml`/`uv.lock` (SDK upgrade).
+- Removed: `main.py`, `remote_main.py`, `GOOGLE_SHEETS_*` service-account settings, `src/services/review/pending_change_store.py`, `src/services/review/account_registry_*`, `account_registry.example.json`, `account_sheets.example.json`, the seven `propose_*` tools.
 - Dependencies: `psycopg[binary,pool]` (sync pool: services and gRPC interceptors are synchronous already), `cryptography`.

@@ -23,12 +23,20 @@ The active tenant (`ad_account_id`, `google_connection_id`, `customer_id`, `logi
 - **WHEN** any module under `src/services/` assigns a Google Ads service client to an instance attribute
 - **THEN** a test fails naming the module
 
-### Requirement: Bearer token identifies exactly one enabled account
-`DbTokenVerifier.verify_token` SHALL hash the presented token (sha256, hex), look up `ad_accounts` by `bearer_token_hash` joined to its connection, and return an `AccessToken` carrying the tenant fields only when the account is enabled and the connection is not revoked; otherwise it SHALL return None without calling Google. `last_used_at` SHALL be updated at most once per minute per account.
+### Requirement: One MCP URL per account, OAuth access token per request
+The server SHALL serve streamable HTTP at `/mcp/{mcp_slug}`, one path per ad account (D23). For every path it SHALL publish protected-resource metadata (RFC 9728) with `resource` = that exact URL and `authorization_servers` = [the web issuer] as the only entry, and answer unauthenticated requests with 401 and `WWW-Authenticate: Bearer resource_metadata="<that path's metadata URL>"`, so that Claude Desktop discovers the web authorization server. An access token SHALL be accepted only as defined in `platform-schema` "MCP access-token format": signature (ES256, keys from the web JWKS, cached), `iss`, `exp`, `aud` equal to the request's URL, and an `ad_accounts` row with that slug owned by `sub`, enabled, whose connection is not revoked; otherwise 401, without calling Google. The row lookup happens on every request, so toggles in the cabinet apply immediately. `last_used_at` SHALL be updated at most once per minute per account. The per-path routing and metadata MAY require wrapping or upgrading FastMCP 2.14.7 (its auth serves one resource per app); that choice is made at the start of the phase.
 
 #### Scenario: Disabled account
-- **WHEN** a request presents the token of an account with `enabled = false`
+- **WHEN** a request presents a valid token for an account with `enabled = false`
 - **THEN** authentication fails and no Google Ads call is made
+
+#### Scenario: Token replayed on another account's path
+- **WHEN** a token issued for `/mcp/aaaa` is presented at `/mcp/bbbb`
+- **THEN** the request gets 401
+
+#### Scenario: Unknown slug
+- **WHEN** a client calls `/mcp/zzzz` for which no account exists
+- **THEN** the request gets 401 (after discovery, authorization fails at the web side), never a tool list
 
 ### Requirement: The account is pinned at the transport
 A gRPC client interceptor installed by `get_service` SHALL, for every RPC: allow it if the request's `customer_id` equals the pinned `customer_id`; allow it if the request has no `customer_id` field and the method is on a short allowlist of customer-independent methods (field metadata, geo-target suggestion); otherwise abort before sending.
@@ -58,9 +66,13 @@ When token refresh fails with `invalid_grant`, the system SHALL set `google_conn
 - **WHEN** the next tool call triggers a token refresh and Google answers `invalid_grant`
 - **THEN** the call returns the reconnect message and `revoked_at` is set
 
-### Requirement: Local mode uses the same path
-`main.py` (stdio) SHALL read a bearer token from `MCP_ACCOUNT_TOKEN`, resolve the tenant with the same verifier, and otherwise behave exactly like the hosted entrypoint (profile, pinning, queue, quota). `GOOGLE_ADS_REFRESH_TOKEN` and the local alias registry SHALL no longer be read. The fixes-log sheet SHALL come from `ad_accounts.fixes_sheet_id` in both modes.
+### Requirement: No local-token mode
+There SHALL be no static token and no stdio entrypoint that reads Google credentials from `.env` (D25). Local development SHALL run the hosted entrypoint on localhost against `app_dev`, with `web/` on `http://localhost:3000` as the authorization server; MCP clients that support OAuth against a loopback resource (Claude Code) connect to `http://localhost:<port>/mcp/<slug>`. `GOOGLE_ADS_REFRESH_TOKEN`, the local alias registry and `account_sheets.json` SHALL no longer be read, and `main.py` (stdio) is removed together with `remote_main.py`. The fixes-log sheet SHALL come from `ad_accounts.fixes_sheet_id` and be written with the connection's own grant (`drive.file`); the service-account credentials (`GOOGLE_SHEETS_CREDENTIALS_*`) are removed.
 
-#### Scenario: No token configured
-- **WHEN** `main.py` starts without `MCP_ACCOUNT_TOKEN`
-- **THEN** it exits with a message pointing to the cabinet to create a token
+#### Scenario: Developer runs the server locally
+- **WHEN** a developer starts the hosted entrypoint on localhost with `app_dev` credentials and adds `http://localhost:8000/mcp/<slug>` to Claude Code
+- **THEN** Claude Code completes OAuth against `http://localhost:3000` and the requests are pinned to that dev account
+
+#### Scenario: Fixes log without Drive access
+- **WHEN** the connection's `scope` lacks `drive.file` or `fixes_sheet_id` is NULL
+- **THEN** fixes-log tools answer "no fixes log available; open the account in the cabinet", and applies still succeed

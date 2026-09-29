@@ -8,10 +8,10 @@ context: |
   plan before proposing anything cross-cutting.
   - mcp-server/ (Python): the Google Ads MCP server (~100 MCP tools wrapping the
     Google Ads API). Has its own CLAUDE.md — read it before proposing changes here.
-  - web/ (Next.js, not started yet): landing/blog/auth/dashboard, owns the Postgres
-    schema/migrations.
-  Neither side calls the other's API directly; they meet only at the DB
-  (bearer tokens issued by web/, checked by mcp-server's TokenVerifier).
+  - web/ (Next.js): landing/blog/auth/cabinet, owns the Postgres
+    schema/migrations, and is the OAuth authorization server for MCP clients.
+  Neither side calls the other's API; they meet at the DB. mcp-server verifies
+  web/'s OAuth JWTs with web/'s public JWKS (one MCP URL per ad account).
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

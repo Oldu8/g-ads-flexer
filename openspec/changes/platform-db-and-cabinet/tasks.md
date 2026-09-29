@@ -1,6 +1,6 @@
 ## 1. Project and database
 
-- [x] 1.1 Next.js (App Router, TypeScript) in `web/` (track B0); Drizzle + `drizzle-kit`; required env read through `requiredEnv` (`DATABASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`; `MCP_PUBLIC_URL` and `SHEETS_SERVICE_ACCOUNT_EMAIL` arrive with B2).
+- [x] 1.1 Next.js (App Router, TypeScript) in `web/` (track B0); Drizzle + `drizzle-kit`; required env read through `requiredEnv` (`DATABASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`; `MCP_PUBLIC_URL` arrives with B2).
 - [x] 1.2 Drizzle schema for every table in `platform-schema` (including `pending_changes`, `api_usage` and the `api_usage_daily_totals` view that only Python uses); generate SQL migrations; the migrations table lives in each schema, not in a shared one.
 - [x] 1.3 `web/db/setup-roles.mjs` (`npm run db:setup-roles`): schemas `app`/`app_dev`, roles `web_prod`/`web_dev` (owners) and `mcp_prod`/`mcp_dev` (NOLOGIN until Phase C), `search_path` per role; passwords go to `.env.local` / Railway, never to the console. Migrations: `npm run db:generate` (strips `"public".`), `npm run db:migrate`.
 - [x] 1.4 `web/src/lib/token-crypto.ts`: AES-256-GCM `encryptToken`/`decryptToken` in the `v1.` format; commit `web/db/test-vectors/token-encryption.json`; tests that reproduce and round-trip it.
@@ -12,14 +12,24 @@
 - [x] 2.2 Account database hooks: encrypt the refresh token, never persist access/id tokens, clear `revoked_at` on sign-in. Unit-tested (`protectTokens`).
 - [x] 2.3 Live check on `app_dev` and prod (done 2026-09-28: operator signed in on ads.vtrata.com; row has `v1.` ciphertext, null access/id tokens, `adwords` scope): run `db:setup-roles` and `db:migrate`, sign in with Google, confirm the `google_connections` row (ciphertext only, `adwords` in `scope`).
 
-## 3. Discovery and accounts
+## 3. Discovery, accounts, fixes log
 
-- [ ] 3.1 `web/lib/google-ads.ts`: mint an access token from the refresh token; `listAccessibleCustomers`; `customer_client` walk per manager; flatten. Unit-test the flattening with recorded responses (direct account, manager with children, nested manager, disabled child).
-- [ ] 3.2 Discovery page: checkbox list of offered accounts; saving creates or updates `ad_accounts` (unique per connection + customer), never deletes on its own.
-- [ ] 3.3 Account page: token generate/regenerate (`gam_` format, sha256 hex stored, shown once), MCP URL + copyable client snippet, enabled toggle, "allow changes" toggle → `tool_profile`, `context` (server-side 2,000-char check), `fixes_sheet_id` + service-account email. Every query scoped by the session user; test the "someone else's id" case.
+- [ ] 3.1 Schema: `ad_accounts.mcp_slug` (unique, not null), drop `bearer_token_hash`/`token_created_at`; the OAuth tables of `@better-auth/oauth-provider` + `jwt()` in `src/db/schema.ts` (snake_case, generated with the Better Auth CLI as a reference); migration.
+- [ ] 3.2 `web/src/lib/google-ads.ts`: mint an access token from the refresh token; `listAccessibleCustomers`; `customer_client` walk per manager; flatten and dedupe (direct wins, then lowest level). Unit-test with recorded responses (direct account, manager with children, nested manager, disabled child, account reached twice).
+- [ ] 3.3 `web/src/lib/fixes-sheet.ts` + `web/db/contracts/fixes-log-header.json`: create the spreadsheet (title, `Fixes` tab, frozen bold header) and probe an existing one (ok / missing / no scope). Tests with a fake fetch; a test that the contract equals the MCP server's current `HEADER`.
+- [ ] 3.4 `/app/discover`: live discovery grouped by manager; saving creates `ad_accounts` rows with `mcp_slug`, their `oauth_resources` rows and sheets; never deletes. `/app`: account list.
+- [ ] 3.5 `/app/accounts/[id]`: MCP URL + Claude Desktop steps, connected clients + Disconnect, enabled, allow changes, `context` (server-side 2,000-char check), fixes log (link / grant access / create new), Remove account. Every query scoped by the session user; test the "someone else's id" case.
 
-## 4. Deploy
+## 4. OAuth for MCP clients
 
-- [ ] 4.1 Railway service for `web/` (prod schema roles and keys; `AUTH_GOOGLE_ID` must equal the MCP server's `GOOGLE_ADS_CLIENT_ID`); the operator registers OAuth redirect URIs for localhost and the Railway domain and adds pilot emails as test users.
-- [ ] 4.2 `web/README.md` rewritten: what exists, how to run locally against `app_dev`, how to migrate.
-- [ ] 4.3 Verify end to end on `app_dev`: the operator signs in, discovers their accounts, exposes one, generates a token; the row matches the spec (no plaintext tokens, correct `login_customer_id`).
+- [ ] 4.1 Better Auth: `jwt()` with ES256, `@better-auth/mcp` (`resource` = `MCP_PUBLIC_URL`, per-account resources from the DB with `enforcePerClientResources: false`, open DCR for public clients, access tokens 1 h, rotating refresh tokens, `loginPage: /login`, `consentPage: /oauth/consent`); root `/.well-known/oauth-authorization-server` (+ path-suffixed and `openid-configuration`) routes; `drive.file` added to the Google scopes. New env: `MCP_PUBLIC_URL`.
+- [ ] 4.2 Resource check before consent: the requested `resource` must be an enabled account of the session user; otherwise an error page. `/login` continues a pending authorization after Google sign-in.
+- [ ] 4.3 `/oauth/consent`: client name, account, what it allows; Allow / Deny.
+- [ ] 4.4 Tests: metadata advertises S256, `none` auth, registration and JWKS endpoints; foreign and disabled resources are refused; issued token claims (`aud`, `sub`, `iss`, ES256 header).
+
+## 5. Deploy and verify
+
+- [x] 5.1 Railway service for `web/` (B0/B1). Operator console work done 2026-09-29: Drive and Sheets APIs enabled, `drive.file`/`adwords` declared, consent screen in Production.
+- [ ] 5.2 Set `MCP_PUBLIC_URL` on Railway, migrate prod, deploy.
+- [ ] 5.3 `web/README.md` rewritten: what exists, how to run locally against `app_dev`, how to migrate.
+- [ ] 5.4 Live check on prod with the operator's account: sign in again (scope has `drive.file`), discover, add an account (row with `mcp_slug`, correct `login_customer_id`, sheet in Drive with the header), toggles and context persist; `web/scripts/oauth-smoke.mjs` runs registration → authorize in the browser → token exchange with PKCE and prints the decoded claims (never the token): `aud` = the account URL, `sub` = the user; a foreign resource is refused. End-to-end with Claude Desktop is the first live step of Phase C (it needs the MCP server).
