@@ -8,8 +8,11 @@ import { getSession } from "@/lib/session";
 export const metadata: Metadata = { title: "Sign in" };
 
 export default async function LoginPage(props: PageProps<"/login">) {
-  if (await getSession()) redirect("/app");
-  const { error } = await props.searchParams;
+  const { error, sig } = await props.searchParams;
+  // `sig`: Better Auth sent us here in the middle of an MCP client's
+  // authorization; signing in resumes it (the client plugin forwards the query).
+  const connecting = Boolean(sig);
+  if (!connecting && (await getSession())) redirect("/app");
 
   return (
     <main className="flex flex-1 items-center justify-center bg-surface px-6">
@@ -17,8 +20,12 @@ export default async function LoginPage(props: PageProps<"/login">) {
         <Logo />
         <h1 className="mt-6 text-2xl font-semibold tracking-tight">Sign in</h1>
         <p className="mt-2 text-sm text-ink-muted">
+          {connecting
+            ? "Sign in to connect your AI assistant to an ad account. "
+            : ""}
           Use the Google account that has access to your Google Ads manager
-          account (MCC). Google will ask to allow access to Google Ads.
+          account (MCC). Google will ask to allow access to Google Ads and to
+          the files this app creates in your Drive.
         </p>
         {error ? (
           <p className="mt-4 rounded-lg bg-tint px-3 py-2 text-sm text-ink">

@@ -14,22 +14,22 @@
 
 ## 3. Discovery, accounts, fixes log
 
-- [ ] 3.1 Schema: `ad_accounts.mcp_slug` (unique, not null), drop `bearer_token_hash`/`token_created_at`; the OAuth tables of `@better-auth/oauth-provider` + `jwt()` in `src/db/schema.ts` (snake_case, generated with the Better Auth CLI as a reference); migration.
-- [ ] 3.2 `web/src/lib/google-ads.ts`: mint an access token from the refresh token; `listAccessibleCustomers`; `customer_client` walk per manager; flatten and dedupe (direct wins, then lowest level). Unit-test with recorded responses (direct account, manager with children, nested manager, disabled child, account reached twice).
-- [ ] 3.3 `web/src/lib/fixes-sheet.ts` + `web/db/contracts/fixes-log-header.json`: create the spreadsheet (title, `Fixes` tab, frozen bold header) and probe an existing one (ok / missing / no scope). Tests with a fake fetch; a test that the contract equals the MCP server's current `HEADER`.
-- [ ] 3.4 `/app/discover`: live discovery grouped by manager; saving creates `ad_accounts` rows with `mcp_slug`, their `oauth_resources` rows and sheets; never deletes. `/app`: account list.
-- [ ] 3.5 `/app/accounts/[id]`: MCP URL + Claude Desktop steps, connected clients + Disconnect, enabled, allow changes, `context` (server-side 2,000-char check), fixes log (link / grant access / create new), Remove account. Every query scoped by the session user; test the "someone else's id" case.
+- [x] 3.1 Schema: `ad_accounts.mcp_slug` (unique, not null), drop `bearer_token_hash`/`token_created_at`; the OAuth tables of `@better-auth/oauth-provider` + `jwt()` in `src/db/schema.ts` (snake_case, generated with the Better Auth CLI as a reference); migration.
+- [x] 3.2 `web/src/lib/google-ads.ts`: mint an access token from the refresh token; `listAccessibleCustomers`; `customer_client` walk per manager; flatten and dedupe (direct wins, then lowest level). Unit-test with recorded responses (direct account, manager with children, nested manager, disabled child, account reached twice).
+- [x] 3.3 `web/src/lib/fixes-sheet.ts` + `web/db/contracts/fixes-log-header.json`: create the spreadsheet (title, `Fixes` tab, frozen bold header) and probe an existing one (ok / missing / no scope). Tests with a fake fetch; a test that the contract equals the MCP server's current `HEADER`.
+- [x] 3.4 `/app/discover`: live discovery grouped by manager; saving creates `ad_accounts` rows with `mcp_slug`, their `oauth_resources` rows and sheets; never deletes. `/app`: account list.
+- [x] 3.5 `/app/accounts/[id]`: MCP URL + Claude Desktop steps, connected clients + Disconnect, enabled, allow changes, `context` (server-side 2,000-char check), fixes log (link / grant access / create new), Remove account. Every query scoped by the session user; test the "someone else's id" case.
 
 ## 4. OAuth for MCP clients
 
-- [ ] 4.1 Better Auth: `jwt()` with ES256, `@better-auth/mcp` (`resource` = `MCP_PUBLIC_URL`, per-account resources from the DB with `enforcePerClientResources: false`, open DCR for public clients, access tokens 1 h, rotating refresh tokens, `loginPage: /login`, `consentPage: /oauth/consent`); root `/.well-known/oauth-authorization-server` (+ path-suffixed and `openid-configuration`) routes; `drive.file` added to the Google scopes. New env: `MCP_PUBLIC_URL`.
-- [ ] 4.2 Resource check before consent: the requested `resource` must be an enabled account of the session user; otherwise an error page. `/login` continues a pending authorization after Google sign-in.
-- [ ] 4.3 `/oauth/consent`: client name, account, what it allows; Allow / Deny.
-- [ ] 4.4 Tests: metadata advertises S256, `none` auth, registration and JWKS endpoints; foreign and disabled resources are refused; issued token claims (`aud`, `sub`, `iss`, ES256 header).
+- [x] 4.1 Better Auth: `jwt()` with ES256, `@better-auth/mcp` (`resource` = `MCP_PUBLIC_URL`, per-account resources from the DB with `enforcePerClientResources: false`, open DCR for public clients, access tokens 1 h, rotating refresh tokens, `loginPage: /login`, `consentPage: /oauth/consent`); root `/.well-known/oauth-authorization-server` (+ path-suffixed and `openid-configuration`) routes; `drive.file` added to the Google scopes. New env: `MCP_PUBLIC_URL`.
+- [x] 4.2 Resource check: disabled resources refused at authorize, foreign ones on the consent page and by a `/oauth2/consent` hook (403), and in `customAccessTokenClaims` at every issuance. `/login` resumes a pending authorization after Google sign-in (client plugin forwards the signed query). Loopback-only registrations become `native`; the canonical resource row is inserted in `instrumentation.ts` (cold-start seeding race).
+- [x] 4.3 `/oauth/consent`: client name, account, what it allows; Allow / Deny.
+- [x] 4.4 Tests: metadata advertises S256, `none` auth, registration and JWKS endpoints; foreign and disabled resources are refused; issued token claims (`aud`, `sub`, `iss`, ES256 header). Done as `npm run check:oauth` (`scripts/oauth-dev-check.mjs`, 14 checks against a local server and `app_dev`), plus unit tests for discovery, MCP URLs and the sheet.
 
 ## 5. Deploy and verify
 
 - [x] 5.1 Railway service for `web/` (B0/B1). Operator console work done 2026-09-29: Drive and Sheets APIs enabled, `drive.file`/`adwords` declared, consent screen in Production.
 - [ ] 5.2 Set `MCP_PUBLIC_URL` on Railway, migrate prod, deploy.
-- [ ] 5.3 `web/README.md` rewritten: what exists, how to run locally against `app_dev`, how to migrate.
+- [x] 5.3 `web/README.md` rewritten: what exists, how to run locally against `app_dev`, how to migrate.
 - [ ] 5.4 Live check on prod with the operator's account: sign in again (scope has `drive.file`), discover, add an account (row with `mcp_slug`, correct `login_customer_id`, sheet in Drive with the header), toggles and context persist; `web/scripts/oauth-smoke.mjs` runs registration → authorize in the browser → token exchange with PKCE and prints the decoded claims (never the token): `aud` = the account URL, `sub` = the user; a foreign resource is refused. End-to-end with Claude Desktop is the first live step of Phase C (it needs the MCP server).

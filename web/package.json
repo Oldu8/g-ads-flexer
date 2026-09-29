@@ -12,9 +12,12 @@
     "db:generate": "drizzle-kit generate && node db/unqualify-migrations.mjs",
     "db:migrate": "node --env-file=.env.local ./node_modules/drizzle-kit/bin.cjs migrate",
     "db:setup-roles": "node --env-file=.env.local db/setup-roles.mjs",
-    "db:migrate:prod": "railway run --service web -- node ./node_modules/drizzle-kit/bin.cjs migrate"
+    "db:migrate:prod": "railway run --service web -- node ./node_modules/drizzle-kit/bin.cjs migrate",
+    "check:oauth": "node --env-file=.env.local scripts/oauth-dev-check.mjs"
   },
   "dependencies": {
+    "@better-auth/mcp": "^1.7.6",
+    "@better-auth/oauth-provider": "^1.7.6",
     "better-auth": "^1.7.6",
     "drizzle-orm": "^0.45.3",
     "next": "16.3.6",

@@ -15,6 +15,20 @@
       "when": 1790499948894,
       "tag": "0001_illegal_wind_dancer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790671922077,
+      "tag": "0002_oauth_server",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790671922446,
+      "tag": "0003_ad_account_mcp_slug",
+      "breakpoints": true
     }
   ]
 }

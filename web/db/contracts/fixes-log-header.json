@@ -1,0 +1,15 @@
+{
+  "worksheet": "Fixes",
+  "header": [
+    "What",
+    "Fix",
+    "Status",
+    "Date",
+    "Expected Outcome",
+    "1-Week Review",
+    "2-Week Review",
+    "1-Month Review",
+    "Conclusion",
+    "ID"
+  ]
+}
