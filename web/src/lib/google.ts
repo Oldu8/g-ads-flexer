@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { googleConnections } from "@/db/schema";
-import { GOOGLE_ADS_SCOPE, GOOGLE_DRIVE_FILE_SCOPE } from "@/lib/google-scopes";
+import { GOOGLE_ADS_SCOPE, GOOGLE_DRIVE_FILE_SCOPE, normalizeScope } from "@/lib/google-scopes";
 import { type CustomerClientRow, flattenDiscovery, type RootResult } from "@/lib/discovery";
 import { requiredEnv } from "@/lib/env";
 import { decryptToken, parseKey } from "@/lib/token-crypto";
@@ -38,6 +38,11 @@ export const hasDriveAccess = (c: Connection) =>
 /**
  * A fresh Google access token from the stored (encrypted) refresh token.
  * `invalid_grant` marks the connection revoked, as the MCP server does.
+ *
+ * Google reports the scopes actually granted with every token; they are
+ * written back to `google_connections.scope` (and to `connection`), because
+ * Better Auth does not update `scope` on a repeat sign-in, so a grant that
+ * later added Drive would otherwise still look Drive-less.
  */
 export async function googleAccessToken(connection: Connection): Promise<string> {
   if (!connection.refreshToken || connection.revokedAt) throw new GoogleGrantRevokedError();
@@ -53,7 +58,11 @@ export async function googleAccessToken(connection: Connection): Promise<string>
     }),
     cache: "no-store",
   });
-  const body = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string };
+  const body = (await res.json().catch(() => ({}))) as {
+    access_token?: string;
+    scope?: string;
+    error?: string;
+  };
   if (body.error === "invalid_grant") {
     await db
       .update(googleConnections)
@@ -63,6 +72,13 @@ export async function googleAccessToken(connection: Connection): Promise<string>
   }
   if (!res.ok || !body.access_token) {
     throw new Error(`Google token refresh failed (${res.status} ${body.error ?? ""})`);
+  }
+  if (body.scope) {
+    const granted = normalizeScope(body.scope);
+    if (granted !== normalizeScope(connection.scope ?? "")) {
+      await db.update(googleConnections).set({ scope: granted }).where(eq(googleConnections.id, connection.id));
+    }
+    connection.scope = granted;
   }
   return body.access_token;
 }

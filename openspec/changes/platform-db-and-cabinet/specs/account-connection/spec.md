@@ -5,7 +5,7 @@ Turn "sign in with Google" into ad accounts that an MCP client can use, with the
 ## ADDED Requirements
 
 ### Requirement: One Google grant signs in, grants Ads access and lets the platform keep a sheet
-Sign-in SHALL use Better Auth with the Google provider, requesting scopes `openid email profile https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/drive.file`, `access_type=offline` and `prompt=select_account consent`. `drive.file` is non-sensitive and only reaches files the app created; it is how the platform creates and writes the fixes-log sheet (D21). Better Auth's account database hooks SHALL encrypt the refresh token into `refresh_token_enc` and null the access and id tokens before any write, so that a later sign-in which returns a new refresh token overwrites `refresh_token_enc`; a successful sign-in SHALL clear `revoked_at`.
+Sign-in SHALL use Better Auth with the Google provider, requesting scopes `openid email profile https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/drive.file`, `access_type=offline` and `prompt=select_account consent`. `drive.file` is non-sensitive and only reaches files the app created; it is how the platform creates and writes the fixes-log sheet (D21). Better Auth's account database hooks SHALL encrypt the refresh token into `refresh_token_enc` and null the access and id tokens before any write, so that a later sign-in which returns a new refresh token overwrites `refresh_token_enc`; a successful sign-in SHALL clear `revoked_at`. Better Auth does not update `scope` on a repeat sign-in, so whenever `web/` mints a Google access token it SHALL write the scopes Google reports as granted back to `google_connections.scope` (comma-joined, sorted); the MCP server may do the same.
 
 #### Scenario: First sign-in
 - **WHEN** a new person signs in and consents
@@ -14,6 +14,10 @@ Sign-in SHALL use Better Auth with the Google provider, requesting scopes `openi
 #### Scenario: Drive unticked on Google's consent screen
 - **WHEN** the person unticks the Drive permission (Google's granular consent) and the stored `scope` lacks `drive.file`
 - **THEN** sign-in and discovery still work, and every account page shows "Allow the fixes log in Google Drive", which re-runs the Google grant
+
+#### Scenario: Drive granted on a later sign-in
+- **WHEN** a user who first signed in without `drive.file` signs in again and grants it
+- **THEN** the next page that talks to Google stores the new `scope`, and the account page offers the sheet instead of "Grant access"
 
 #### Scenario: Reconnect after revocation
 - **WHEN** a connection has `revoked_at` set and the user signs in again

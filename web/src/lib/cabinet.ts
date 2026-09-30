@@ -114,8 +114,9 @@ export async function addAccounts(userId: string, connection: Connection, chosen
 
 /** Creates (or replaces) the account's sheet; false when Drive is not granted. */
 export async function createSheetFor(account: Account, connection: Connection): Promise<boolean> {
-  if (!hasDriveAccess(connection)) return false;
+  // Minting first refreshes connection.scope from what Google reports.
   const token = await googleAccessToken(connection);
+  if (!hasDriveAccess(connection)) return false;
   const id = await createFixesSheet(token, fixesSheetTitle(account.displayName, account.customerId));
   await db.update(adAccounts).set({ fixesSheetId: id }).where(eq(adAccounts.id, account.id));
   return true;
@@ -124,10 +125,18 @@ export async function createSheetFor(account: Account, connection: Connection): 
 export type SheetStatus = SheetState | "none" | "no_access" | "unknown";
 
 export async function sheetStatus(account: Account, connection: Connection | undefined): Promise<SheetStatus> {
-  if (!connection || !hasDriveAccess(connection)) return "no_access";
+  if (!connection) return "no_access";
+  let token: string;
+  try {
+    // Also refreshes connection.scope from what Google reports.
+    token = await googleAccessToken(connection);
+  } catch {
+    return hasDriveAccess(connection) ? "unknown" : "no_access";
+  }
+  if (!hasDriveAccess(connection)) return "no_access";
   if (!account.fixesSheetId) return "none";
   try {
-    return await probeFixesSheet(await googleAccessToken(connection), account.fixesSheetId);
+    return await probeFixesSheet(token, account.fixesSheetId);
   } catch {
     return "unknown";
   }
