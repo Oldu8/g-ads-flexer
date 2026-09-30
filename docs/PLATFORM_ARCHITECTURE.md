@@ -114,7 +114,7 @@ roles and its own token-encryption key; the dev roles cannot read prod.
 | `api_usage` | mcp-server | operations per account per quota day |
 
 The MCP role cannot read `users` or `sessions`. Columns, grants and byte
-formats: `openspec/changes/platform-db-and-cabinet/specs/platform-schema/`.
+formats: `openspec/specs/platform-schema/`.
 
 ## Connecting an account
 

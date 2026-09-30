@@ -27,5 +27,5 @@ first. One session and one branch per track.
   `ALLOW_INDEXING=true`: the current domain `ads.vtrata.com` is temporary.
 - **Database:** from track B1 this app owns the Postgres schema and every
   migration (Drizzle), including tables the Python MCP server writes to
-  (`../openspec/changes/platform-db-and-cabinet/`).
+  (`../openspec/specs/platform-schema/`, `../openspec/specs/account-connection/`).
 - **Secrets:** never commit `.env*`; `.env.example` documents every variable.

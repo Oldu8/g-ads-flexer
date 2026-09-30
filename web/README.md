@@ -6,7 +6,8 @@ clients (Claude Desktop) sign in through, and later an operator-only admin.
 It shares one Postgres database with `../mcp-server/` and owns its schema.
 
 Plan and status: [`../docs/ROADMAP.md`](../docs/ROADMAP.md), web tracks B0–B6.
-Contracts: [`../openspec/changes/platform-db-and-cabinet/`](../openspec/changes/platform-db-and-cabinet/).
+Contracts: [`../openspec/specs/platform-schema/`](../openspec/specs/platform-schema/spec.md) and
+[`../openspec/specs/account-connection/`](../openspec/specs/account-connection/spec.md).
 
 | Track | Status |
 |---|---|

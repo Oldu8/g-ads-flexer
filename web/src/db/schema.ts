@@ -1,6 +1,6 @@
 /**
  * The platform's shared database schema (ROADMAP D9-D11, spec
- * openspec/changes/platform-db-and-cabinet/specs/platform-schema).
+ * openspec/specs/platform-schema).
  *
  * Tables are unqualified: the connecting role's search_path picks the
  * schema (`app` for prod, `app_dev` for dev), so one set of migrations
