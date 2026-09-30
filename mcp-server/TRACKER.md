@@ -1,5 +1,34 @@
 # Google Ads MCP Service Implementation Tracker
 
+## ✅ 2026-09-30 — Web track B2 done: cabinet, OAuth for Claude Desktop (inputs for Phase C)
+
+OpenSpec change `platform-db-and-cabinet` (tasks 3–5), branch `b2-cabinet`;
+decisions D20–D25 in `docs/ROADMAP.md`. Checked 2026-09-29 in Anthropic's
+docs: Claude Desktop / claude.ai remote connectors authenticate only with
+OAuth 2.1 + PKCE (DCR or CIMD, RFC 9728 discovery); static headers are an
+org-level beta. So there is no static bearer token any more.
+
+What the MCP server gets from B2 (prod, verified live on account boo.ua):
+
+- One URL per account: `https://ads-mcp.vtrata.com/mcp/<mcp_slug>`
+  (`ad_accounts.mcp_slug`). The web side (`https://ads.vtrata.com`, issuer
+  `https://ads.vtrata.com/api/auth`) issues ES256 JWTs, JWKS at
+  `/api/auth/jwks`, 1 h, `sub` = `users.id`. `aud` is a list: the account
+  URL plus `…/api/auth/oauth2/userinfo` when identity scopes were granted —
+  compare the one entry under `MCP_PUBLIC_URL` with the request URL.
+- FastMCP 2.14.7's `JWTVerifier` has no EdDSA, hence ES256; its auth serves
+  one resource per app, so per-path RFC 9728 metadata needs a wrapper or an
+  upgrade (Phase C task 4.0; FastMCP is at 4.x).
+- `google_connections.scope` is kept in sync with what Google reports on
+  each token refresh (Better Auth does not update it on a repeat sign-in).
+  The operator's grant now has `adwords` + `drive.file`; fixes-log sheets
+  are created by the cabinet in the user's Drive (`fixes_sheet_id`), header
+  contract `web/db/contracts/fixes-log-header.json` (a web test pins it to
+  `HEADER` in `fixes_log_sheet.py`). The service account is to be removed.
+- Consent screen published to Production without verification
+  (2026-09-29): no 7-day token expiry; refresh the local `.env` token with
+  `scripts/verify_google_access.py --write-env .env`.
+
 ## ✅ 2026-09-26 — Phase A done: tool profiles, registry, bounded responses, error hints
 
 OpenSpec change `agent-surface-profiles`, branch `phase-a-agent-surface`.
